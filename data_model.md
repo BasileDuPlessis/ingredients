@@ -36,3 +36,8 @@ This allows efficient full-text queries on the content field.
 - Use FTS for searching the content field
 - telegram_id can be used to filter entries by user
 - Keep it simple for initial implementation
+
+## Implementation Notes
+- Tables are auto-created at application startup using `CREATE TABLE IF NOT EXISTS`
+- FTS virtual table is created with triggers to keep it synchronized
+- Database path is loaded from `DATABASE_URL` environment variable
