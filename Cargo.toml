@@ -1,6 +1,10 @@
 [package]
 name = "ingredients"
 version = "0.1.0"
-edition = "2024"
+edition = "2021"
 
 [dependencies]
+teloxide = "0.17.0"
+rusqlite = "0.37.0"
+tokio = { version = "1.47.1", features = ["full"] }
+dotenv = "0.15.0"
