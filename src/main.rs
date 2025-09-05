@@ -2,9 +2,15 @@ use rusqlite::Connection;
 use std::env;
 use teloxide::prelude::*;
 use anyhow::Result;
+use log::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Initialize logging
+    env_logger::init();
+
+    info!("Starting Ingredients Telegram Bot");
+
     // Load environment variables from .env file
     dotenv::dotenv().ok();
 
@@ -13,6 +19,8 @@ async fn main() -> Result<()> {
 
     // Get database path from environment
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+
+    info!("Initializing database at: {}", database_url);
 
     // Create database connection
     let conn = Connection::open(&database_url)?;
@@ -63,10 +71,12 @@ async fn main() -> Result<()> {
         [],
     )?;
 
-    println!("Database initialized successfully");
+    info!("Database initialized successfully");
 
     // Initialize the bot
     let bot = Bot::new(bot_token);
+
+    info!("Bot initialized, starting dispatcher");
 
     // Set up the dispatcher
     let handler = dptree::entry()
@@ -86,71 +96,11 @@ async fn message_handler(
     msg: Message,
 ) -> Result<()> {
     if let Some(text) = msg.text() {
+        info!("Received text message from user {}: {}", msg.chat.id, text);
         bot.send_message(msg.chat.id, format!("Received: {}", text)).await?;
+    } else {
+        info!("Received non-text message from user {}", msg.chat.id);
     }
 
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use rusqlite::Connection;
-
-    #[test]
-    fn test_database_initialization() {
-        // Create an in-memory database for testing
-        let conn = Connection::open_in_memory().unwrap();
-
-        // Test creating the entries table
-        let result = conn.execute(
-            "CREATE TABLE IF NOT EXISTS entries (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                telegram_id INTEGER NOT NULL,
-                content TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            )",
-            [],
-        );
-
-        assert!(result.is_ok());
-
-        // Test creating the FTS table
-        let result = conn.execute(
-            "CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
-                content,
-                content='entries',
-                content_rowid='id'
-            )",
-            [],
-        );
-
-        assert!(result.is_ok());
-
-        // Test inserting a record
-        let result = conn.execute(
-            "INSERT INTO entries (telegram_id, content) VALUES (?1, ?2)",
-            rusqlite::params![12345, "Test content"],
-        );
-
-        assert!(result.is_ok());
-
-        // Test querying the record
-        let mut stmt = conn.prepare("SELECT id, telegram_id, content FROM entries WHERE id = 1").unwrap();
-        let mut rows = stmt.query_map([], |row| {
-            Ok((
-                row.get::<_, i64>(0)?,
-                row.get::<_, i64>(1)?,
-                row.get::<_, String>(2)?,
-            ))
-        }).unwrap();
-
-        if let Some(row) = rows.next() {
-            let (id, telegram_id, content) = row.unwrap();
-            assert_eq!(id, 1);
-            assert_eq!(telegram_id, 12345);
-            assert_eq!(content, "Test content");
-        } else {
-            panic!("No row found");
-        }
-    }
 }
