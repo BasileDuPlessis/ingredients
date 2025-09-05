@@ -1,0 +1,25 @@
+# Rust build
+/target/
+
+# Cargo package files
+**/*.rs.bk
+
+# IDEs and editors
+/.idea/
+*.swp
+*.swo
+*.bak
+*.tmp
+*.vscode/
+
+# macOS
+.DS_Store
+
+# Logs
+*.log
+
+# Byproducts
+Cargo.lock
+
+# Environment variables
+.env
