@@ -1,6 +1,6 @@
 # Ingredients Rust Application
 
-Ingredients is a simple Rust command-line application that currently outputs "Hello, world!" when executed. This is a basic Rust project managed with Cargo.
+Ingredients is a Telegram bot application built in Rust that receives pictures of ingredient lists for recipes and comments from users, extracts text from images using OCR (Optical Character Recognition), and stores all the extracted text and comments in a full-text searchable database table. Users can later query the stored content through the Telegram interface.
 
 Always reference these instructions first and fallback to search or bash commands only when you encounter unexpected information that does not match the info here.
 
@@ -31,7 +31,7 @@ Always reference these instructions first and fallback to search or bash command
 - Compiled binary location: `./target/debug/ingredients`
 - Release binary location: `./target/release/ingredients` (after `cargo build --release`)
 - You can run the binary directly: `./target/debug/ingredients`
-- Expected output: "Hello, world!"
+- Expected output: The bot starts and listens for Telegram messages (no console output in normal operation)
 
 ## Validation
 
@@ -40,12 +40,12 @@ Always reference these instructions first and fallback to search or bash command
   1. `cargo check` -- must pass without errors
   2. `cargo build` -- must complete successfully  
   3. `cargo test` -- must pass (even with 0 tests)
-  4. `cargo run` -- must output "Hello, world!"
-- **Test the compiled binary directly**: `./target/debug/ingredients` should output "Hello, world!"
+  4. `cargo run` -- must start the bot successfully
+- **Test the compiled binary directly**: `./target/debug/ingredients` should start the bot
 - **Always run formatting and linting**: `cargo fmt && cargo clippy` before finishing work
 
 ### Expected Command Output
-- `cargo run` output: "Hello, world!"
+- `cargo run` output: Bot starts successfully and begins polling for messages
 - `cargo test` output: "running 0 tests" with "test result: ok"
 - `cargo build` output: "Finished \`dev\` profile [unoptimized + debuginfo] target(s)"
 
@@ -75,7 +75,7 @@ edition = "2024"
 
 ### Source Code Location
 - Main application entry point: `src/main.rs`
-- Current functionality: Simple "Hello, world!" program
+- Current functionality: Telegram bot with OCR and full-text search
 
 ### Adding New Dependencies
 - Add dependencies to `Cargo.toml` under `[dependencies]` section
