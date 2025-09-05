@@ -6,7 +6,7 @@ fn main() -> Result<()> {
     dotenv::dotenv().ok();
 
     // Get database path from environment
-    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL environment variable must be set. Please set it to your SQLite database file path.");
 
     // Create database connection
     let conn = Connection::open(&database_url)?;
