@@ -4,6 +4,8 @@ use teloxide::prelude::*;
 use anyhow::Result;
 use log::info;
 
+mod db;
+
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
