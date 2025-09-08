@@ -1,6 +1,6 @@
-use rusqlite::{Connection, params};
-use anyhow::{Result, Context};
+use anyhow::{Context, Result};
 use log::info;
+use rusqlite::{params, Connection};
 
 /// Represents an entry in the database
 #[derive(Debug, Clone, PartialEq)]
@@ -24,7 +24,8 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
             created_at DATETIME DEFAULT CURRENT_TIMESTAMP
         )",
         [],
-    ).context("Failed to create entries table")?;
+    )
+    .context("Failed to create entries table")?;
 
     // Create FTS virtual table for full-text search
     conn.execute(
@@ -34,7 +35,8 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
             content_rowid='id'
         )",
         [],
-    ).context("Failed to create FTS table")?;
+    )
+    .context("Failed to create FTS table")?;
 
     // Create triggers to keep FTS table in sync
     conn.execute(
@@ -43,7 +45,8 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
              INSERT INTO entries_fts(rowid, content) VALUES (new.id, new.content);
          END",
         [],
-    ).context("Failed to create insert trigger")?;
+    )
+    .context("Failed to create insert trigger")?;
 
     conn.execute(
         "CREATE TRIGGER IF NOT EXISTS entries_delete AFTER DELETE ON entries
@@ -51,7 +54,8 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
              DELETE FROM entries_fts WHERE rowid = old.id;
          END",
         [],
-    ).context("Failed to create delete trigger")?;
+    )
+    .context("Failed to create delete trigger")?;
 
     conn.execute(
         "CREATE TRIGGER IF NOT EXISTS entries_update AFTER UPDATE ON entries
@@ -59,12 +63,12 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
              UPDATE entries_fts SET content = new.content WHERE rowid = new.id;
          END",
         [],
-    ).context("Failed to create update trigger")?;
+    )
+    .context("Failed to create update trigger")?;
 
     info!("Database schema initialized successfully");
     Ok(())
 }
-
 
 /// Create a new entry in the database
 pub fn create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Result<i64> {
@@ -73,7 +77,8 @@ pub fn create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Resul
     conn.execute(
         "INSERT INTO entries (telegram_id, content) VALUES (?1, ?2)",
         params![telegram_id, content],
-    ).context("Failed to insert new entry")?;
+    )
+    .context("Failed to insert new entry")?;
 
     let entry_id = conn.last_insert_rowid();
     info!("Entry created with ID: {}", entry_id);
@@ -85,9 +90,9 @@ pub fn create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Resul
 pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
     info!("Reading entry with ID: {}", entry_id);
 
-    let mut stmt = conn.prepare(
-        "SELECT id, telegram_id, content, created_at FROM entries WHERE id = ?1",
-    ).context("Failed to prepare read statement")?;
+    let mut stmt = conn
+        .prepare("SELECT id, telegram_id, content, created_at FROM entries WHERE id = ?1")
+        .context("Failed to prepare read statement")?;
 
     let entry = stmt.query_row(params![entry_id], |row| {
         Ok(Entry {
@@ -107,9 +112,7 @@ pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
             info!("No entry found with ID: {}", entry_id);
             Ok(None)
         }
-        Err(e) => {
-            Err(e).context("Failed to read entry")
-        }
+        Err(e) => Err(e).context("Failed to read entry"),
     }
 }
 
@@ -117,10 +120,12 @@ pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
 pub fn update_entry(conn: &Connection, entry_id: i64, new_content: &str) -> Result<bool> {
     info!("Updating entry with ID: {}", entry_id);
 
-    let rows_affected = conn.execute(
-        "UPDATE entries SET content = ?1 WHERE id = ?2",
-        params![new_content, entry_id],
-    ).context("Failed to update entry")?;
+    let rows_affected = conn
+        .execute(
+            "UPDATE entries SET content = ?1 WHERE id = ?2",
+            params![new_content, entry_id],
+        )
+        .context("Failed to update entry")?;
 
     if rows_affected > 0 {
         info!("Entry updated successfully with ID: {}", entry_id);
@@ -135,10 +140,9 @@ pub fn update_entry(conn: &Connection, entry_id: i64, new_content: &str) -> Resu
 pub fn delete_entry(conn: &Connection, entry_id: i64) -> Result<bool> {
     info!("Deleting entry with ID: {}", entry_id);
 
-    let rows_affected = conn.execute(
-        "DELETE FROM entries WHERE id = ?1",
-        params![entry_id],
-    ).context("Failed to delete entry")?;
+    let rows_affected = conn
+        .execute("DELETE FROM entries WHERE id = ?1", params![entry_id])
+        .context("Failed to delete entry")?;
 
     if rows_affected > 0 {
         info!("Entry deleted successfully with ID: {}", entry_id);
@@ -259,7 +263,8 @@ mod tests {
         // Verify all entries were created
         for (i, expected_id) in entry_ids.iter().enumerate() {
             let (telegram_id, content) = &entries[i];
-            let mut stmt = conn.prepare("SELECT telegram_id, content FROM entries WHERE id = ?1")?;
+            let mut stmt =
+                conn.prepare("SELECT telegram_id, content FROM entries WHERE id = ?1")?;
             let mut rows = stmt.query_map(params![expected_id], |row| {
                 Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
             })?;
@@ -287,9 +292,7 @@ mod tests {
 
         // Verify the entry was synced to FTS table
         let mut stmt = conn.prepare("SELECT content FROM entries_fts WHERE rowid = ?1")?;
-        let mut rows = stmt.query_map(params![entry_id], |row| {
-            Ok(row.get::<_, String>(0)?)
-        })?;
+        let mut rows = stmt.query_map(params![entry_id], |row| Ok(row.get::<_, String>(0)?))?;
 
         if let Some(row_result) = rows.next() {
             let fts_content = row_result?;

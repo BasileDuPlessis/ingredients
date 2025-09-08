@@ -1,10 +1,10 @@
 mod db;
 
+use anyhow::{Context, Result};
+use log::info;
 use rusqlite::Connection;
 use std::env;
 use teloxide::prelude::*;
-use anyhow::{Result, Context};
-use log::info;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -28,8 +28,7 @@ async fn main() -> Result<()> {
     let conn = Connection::open(&database_url)?;
 
     // Initialize database schema
-    db::init_database_schema(&conn)
-        .context("Failed to initialize database schema")?;
+    db::init_database_schema(&conn).context("Failed to initialize database schema")?;
 
     info!("Database initialized successfully");
 
@@ -39,8 +38,7 @@ async fn main() -> Result<()> {
     info!("Bot initialized, starting dispatcher");
 
     // Set up the dispatcher
-    let handler = dptree::entry()
-        .branch(Update::filter_message().endpoint(message_handler));
+    let handler = dptree::entry().branch(Update::filter_message().endpoint(message_handler));
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()
@@ -51,13 +49,11 @@ async fn main() -> Result<()> {
     Ok(())
 }
 
-async fn message_handler(
-    bot: Bot,
-    msg: Message,
-) -> Result<()> {
+async fn message_handler(bot: Bot, msg: Message) -> Result<()> {
     if let Some(text) = msg.text() {
         info!("Received text message from user {}: {}", msg.chat.id, text);
-        bot.send_message(msg.chat.id, format!("Received: {}", text)).await?;
+        bot.send_message(msg.chat.id, format!("Received: {}", text))
+            .await?;
     } else {
         info!("Received non-text message from user {}", msg.chat.id);
     }
