@@ -52,15 +52,8 @@ async fn download_and_process_image(
             }
 
             // Extract text from the image using OCR with circuit breaker protection
-            if CIRCUIT_BREAKER.is_open() {
-                info!("Circuit breaker is open, rejecting OCR request for user {}", chat_id);
-                bot.send_message(chat_id, "❌ OCR service is temporarily unavailable due to repeated failures. Please try again later.").await?;
-                return Ok(String::new());
-            }
-
-            match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG, &OCR_INSTANCE_MANAGER).await {
+            match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG, &OCR_INSTANCE_MANAGER, &CIRCUIT_BREAKER).await {
                 Ok(extracted_text) => {
-                    CIRCUIT_BREAKER.record_success();
                     if extracted_text.is_empty() {
                         info!("No text found in image from user {}", chat_id);
                         bot.send_message(chat_id, "⚠️ No text was found in the image. Please try a clearer image with visible text.").await?;
@@ -79,7 +72,6 @@ async fn download_and_process_image(
                     }
                 }
                 Err(e) => {
-                    CIRCUIT_BREAKER.record_failure();
                     error!("OCR processing failed for user {}: {:?}", chat_id, e);
 
                     // Provide more specific error messages based on the error type
