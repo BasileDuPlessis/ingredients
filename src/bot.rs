@@ -8,6 +8,11 @@ use rusqlite::Connection;
 use anyhow::Result;
 use log::{info, error};
 
+// Create OCR configuration with default settings
+lazy_static::lazy_static! {
+    static ref OCR_CONFIG: crate::ocr::OcrConfig = crate::ocr::OcrConfig::default();
+}
+
 async fn download_file(bot: &Bot, file_id: FileId) -> Result<String> {
     let file = bot.get_file(file_id).await?;
     let file_path = file.path;
@@ -38,14 +43,14 @@ async fn download_and_process_image(
             bot.send_message(chat_id, success_message).await?;
 
             // Validate image format before OCR processing
-            if !crate::ocr::is_supported_image_format(&temp_path) {
+            if !crate::ocr::is_supported_image_format(&temp_path, &OCR_CONFIG) {
                 info!("Unsupported image format for user {}", chat_id);
                 bot.send_message(chat_id, "❌ Unsupported image format. Please use PNG, JPG, JPEG, BMP, TIFF, or TIF formats.").await?;
                 return Ok(String::new());
             }
 
             // Extract text from the image using OCR
-            match crate::ocr::extract_text_from_image(&temp_path).await {
+            match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG).await {
                 Ok(extracted_text) => {
                     if extracted_text.is_empty() {
                         info!("No text found in image from user {}", chat_id);

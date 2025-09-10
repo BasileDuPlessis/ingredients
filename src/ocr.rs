@@ -36,8 +36,32 @@ const FORMAT_DETECTION_BUFFER_SIZE: usize = 32;
 const MIN_FORMAT_BYTES: usize = 8;
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10MB limit for image files
 
+/// Configuration structure for OCR processing
+#[derive(Debug, Clone)]
+pub struct OcrConfig {
+    /// OCR language codes (e.g., "eng", "eng+fra", "deu")
+    pub languages: String,
+    /// Buffer size for format detection in bytes
+    pub buffer_size: usize,
+    /// Minimum bytes required for format detection
+    pub min_format_bytes: usize,
+    /// Maximum allowed file size in bytes
+    pub max_file_size: u64,
+}
+
+impl Default for OcrConfig {
+    fn default() -> Self {
+        Self {
+            languages: DEFAULT_LANGUAGES.to_string(),
+            buffer_size: FORMAT_DETECTION_BUFFER_SIZE,
+            min_format_bytes: MIN_FORMAT_BYTES,
+            max_file_size: MAX_FILE_SIZE,
+        }
+    }
+}
+
 /// Validate image file path and basic properties
-fn validate_image_path(image_path: &str) -> Result<()> {
+fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
     // Check if path is provided
     if image_path.is_empty() {
         return Err(anyhow::anyhow!("Image path cannot be empty"));
@@ -58,11 +82,11 @@ fn validate_image_path(image_path: &str) -> Result<()> {
     match path.metadata() {
         Ok(metadata) => {
             let file_size = metadata.len();
-            if file_size > MAX_FILE_SIZE {
+            if file_size > config.max_file_size {
                 return Err(anyhow::anyhow!(
                     "Image file too large: {} bytes (maximum allowed: {} bytes)",
                     file_size,
-                    MAX_FILE_SIZE
+                    config.max_file_size
                 ));
             }
             if file_size == 0 {
@@ -87,14 +111,14 @@ fn validate_image_path(image_path: &str) -> Result<()> {
 }
 
 /// Extract text from an image using Tesseract OCR
-pub async fn extract_text_from_image(image_path: &str) -> Result<String> {
+pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig) -> Result<String> {
     // Validate input before processing
-    validate_image_path(image_path)?;
+    validate_image_path(image_path, config)?;
 
     info!("Starting OCR text extraction from image: {}", image_path);
 
-    // Create a new Tesseract instance with English and French languages
-    let mut tess = LepTess::new(None, DEFAULT_LANGUAGES)
+    // Create a new Tesseract instance with configured languages
+    let mut tess = LepTess::new(None, &config.languages)
         .map_err(|e| anyhow::anyhow!("Failed to initialize Tesseract OCR: {}", e))?;
 
     // Set the image for OCR processing
@@ -120,19 +144,19 @@ pub async fn extract_text_from_image(image_path: &str) -> Result<String> {
 }
 
 /// Validate if an image file is supported for OCR processing using image::guess_format
-pub fn is_supported_image_format(file_path: &str) -> bool {
+pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
     // Basic validation first
-    if let Err(_) = validate_image_path(file_path) {
+    if let Err(_) = validate_image_path(file_path, config) {
         return false;
     }
 
     match File::open(file_path) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
-            let mut buffer = vec![0; FORMAT_DETECTION_BUFFER_SIZE]; // Pre-allocate buffer for format detection
+            let mut buffer = vec![0; config.buffer_size]; // Pre-allocate buffer for format detection
 
             match reader.read(&mut buffer) {
-                Ok(bytes_read) if bytes_read >= MIN_FORMAT_BYTES => {
+                Ok(bytes_read) if bytes_read >= config.min_format_bytes => {
                     // Truncate buffer to actual bytes read
                     buffer.truncate(bytes_read);
 
@@ -164,7 +188,7 @@ pub fn is_supported_image_format(file_path: &str) -> bool {
                     }
                 }
                 Ok(bytes_read) => {
-                    info!("Could not read enough bytes to determine image format for file: {} (read {} bytes, need at least {})", file_path, bytes_read, MIN_FORMAT_BYTES);
+                    info!("Could not read enough bytes to determine image format for file: {} (read {} bytes, need at least {})", file_path, bytes_read, config.min_format_bytes);
                     false
                 }
                 Err(e) => {
