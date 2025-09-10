@@ -1,3 +1,29 @@
+//! # OCR Processing Module
+//!
+//! This module provides optical character recognition (OCR) functionality for extracting
+//! text from images using the Tesseract OCR engine.
+//!
+//! ## Features
+//!
+//! - Text extraction from images using Tesseract OCR
+//! - Automatic image format detection and validation
+//! - Support for multiple languages (default: English and French)
+//! - Comprehensive error handling and logging
+//!
+//! ## Supported Image Formats
+//!
+//! - PNG (Portable Network Graphics)
+//! - JPEG/JPG (Joint Photographic Experts Group)
+//! - BMP (Bitmap)
+//! - TIFF/TIF (Tagged Image File Format)
+//!
+//! ## Dependencies
+//!
+//! - `leptess`: Rust bindings for Tesseract OCR and Leptonica
+//! - `image`: Image format detection and processing
+//! - `anyhow`: Error handling
+//! - `log`: Logging functionality
+
 use leptess::LepTess;
 use std::fs::File;
 use std::io::{BufReader, Read};
