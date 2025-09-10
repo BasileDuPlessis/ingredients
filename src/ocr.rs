@@ -47,8 +47,37 @@ pub struct OcrConfig {
     pub buffer_size: usize,
     /// Minimum bytes required for format detection
     pub min_format_bytes: usize,
-    /// Maximum allowed file size in bytes
+    /// Maximum allowed file size in bytes (general limit)
     pub max_file_size: u64,
+    /// Format-specific size limits
+    pub format_limits: FormatSizeLimits,
+}
+
+/// Format-specific file size limits for different image formats
+#[derive(Debug, Clone)]
+pub struct FormatSizeLimits {
+    /// PNG format limit (higher due to better compression)
+    pub png_max_size: u64,
+    /// JPEG format limit (moderate due to lossy compression)
+    pub jpeg_max_size: u64,
+    /// BMP format limit (lower due to uncompressed nature)
+    pub bmp_max_size: u64,
+    /// TIFF format limit (can be large, multi-page support)
+    pub tiff_max_size: u64,
+    /// Minimum file size threshold for quick rejection
+    pub min_quick_reject_size: u64,
+}
+
+impl Default for FormatSizeLimits {
+    fn default() -> Self {
+        Self {
+            png_max_size: 15 * 1024 * 1024,    // 15MB for PNG
+            jpeg_max_size: 10 * 1024 * 1024,   // 10MB for JPEG
+            bmp_max_size: 5 * 1024 * 1024,     // 5MB for BMP
+            tiff_max_size: 20 * 1024 * 1024,   // 20MB for TIFF
+            min_quick_reject_size: 50 * 1024 * 1024, // 50MB quick reject
+        }
+    }
 }
 
 impl Default for OcrConfig {
@@ -58,6 +87,7 @@ impl Default for OcrConfig {
             buffer_size: FORMAT_DETECTION_BUFFER_SIZE,
             min_format_bytes: MIN_FORMAT_BYTES,
             max_file_size: MAX_FILE_SIZE,
+            format_limits: FormatSizeLimits::default(),
         }
     }
 }
@@ -184,10 +214,129 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
     Ok(())
 }
 
+/// Enhanced validation with format-specific size limits and progressive validation
+fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Result<()> {
+    // First, perform basic validation
+    validate_image_path(image_path, config)?;
+
+    let path = std::path::Path::new(image_path);
+    let file_size = path.metadata()?.len();
+
+    // Quick rejection for extremely large files
+    if file_size > config.format_limits.min_quick_reject_size {
+        info!("Quick rejecting file {}: {} bytes exceeds quick reject threshold",
+              image_path, file_size);
+        return Err(anyhow::anyhow!(
+            "File too large for processing: {} bytes (exceeds quick reject threshold of {} bytes)",
+            file_size, config.format_limits.min_quick_reject_size
+        ));
+    }
+
+    // Try to detect format and apply format-specific limits
+    match File::open(image_path) {
+        Ok(file) => {
+            let mut reader = BufReader::new(file);
+            let mut buffer = vec![0; config.buffer_size];
+
+            match reader.read(&mut buffer) {
+                Ok(bytes_read) if bytes_read >= config.min_format_bytes => {
+                    buffer.truncate(bytes_read);
+
+                    match image::guess_format(&buffer) {
+                        Ok(format) => {
+                            let format_limit = match format {
+                                image::ImageFormat::Png => {
+                                    info!("Detected PNG format for {}, applying {}MB limit",
+                                          image_path, config.format_limits.png_max_size / (1024 * 1024));
+                                    config.format_limits.png_max_size
+                                }
+                                image::ImageFormat::Jpeg => {
+                                    info!("Detected JPEG format for {}, applying {}MB limit",
+                                          image_path, config.format_limits.jpeg_max_size / (1024 * 1024));
+                                    config.format_limits.jpeg_max_size
+                                }
+                                image::ImageFormat::Bmp => {
+                                    info!("Detected BMP format for {}, applying {}MB limit",
+                                          image_path, config.format_limits.bmp_max_size / (1024 * 1024));
+                                    config.format_limits.bmp_max_size
+                                }
+                                image::ImageFormat::Tiff => {
+                                    info!("Detected TIFF format for {}, applying {}MB limit",
+                                          image_path, config.format_limits.tiff_max_size / (1024 * 1024));
+                                    config.format_limits.tiff_max_size
+                                }
+                                _ => {
+                                    info!("Detected unsupported format {:?} for {}, using general limit",
+                                          format, image_path);
+                                    config.max_file_size
+                                }
+                            };
+
+                            if file_size > format_limit {
+                                return Err(anyhow::anyhow!(
+                                    "Image file too large for {:?} format: {} bytes (maximum allowed: {} bytes)",
+                                    format, file_size, format_limit
+                                ));
+                            }
+
+                            // Estimate memory usage for processing
+                            let estimated_memory_mb = estimate_memory_usage(file_size, &format);
+                            info!("Estimated memory usage for {}: {}MB", image_path, estimated_memory_mb);
+
+                            Ok(())
+                        }
+                        Err(_) => {
+                            // Could not determine format, use general limit
+                            info!("Could not determine image format for {}, using general size limit", image_path);
+                            if file_size > config.max_file_size {
+                                return Err(anyhow::anyhow!(
+                                    "Image file too large: {} bytes (maximum allowed: {} bytes)",
+                                    file_size, config.max_file_size
+                                ));
+                            }
+                            Ok(())
+                        }
+                    }
+                }
+                _ => {
+                    // Could not read enough bytes, use general limit
+                    info!("Could not read enough bytes for format detection from {}, using general size limit", image_path);
+                    if file_size > config.max_file_size {
+                        return Err(anyhow::anyhow!(
+                            "Image file too large: {} bytes (maximum allowed: {} bytes)",
+                            file_size, config.max_file_size
+                        ));
+                    }
+                    Ok(())
+                }
+            }
+        }
+        Err(e) => {
+            return Err(anyhow::anyhow!("Cannot open image file for validation: {} - {}", image_path, e));
+        }
+    }
+}
+
+/// Estimate memory usage for image processing based on file size and format
+fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
+    let file_size_mb = file_size as f64 / (1024.0 * 1024.0);
+
+    // Memory estimation factors based on format characteristics
+    let memory_factor = match format {
+        image::ImageFormat::Png => 3.0,   // PNG decompression can use 2-4x file size
+        image::ImageFormat::Jpeg => 2.5,  // JPEG decompression uses ~2-3x
+        image::ImageFormat::Bmp => 1.2,   // BMP is mostly uncompressed
+        image::ImageFormat::Tiff => 4.0,  // TIFF can be complex with layers
+        _ => 3.0, // Default estimation
+    };
+
+    file_size_mb * memory_factor
+}
+
 /// Extract text from an image using Tesseract OCR with instance reuse
 pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String> {
-    // Validate input before processing
-    validate_image_path(image_path, config)?;
+    // Validate input with enhanced format-specific validation
+    validate_image_with_format_limits(image_path, config)?;
 
     info!("Starting OCR text extraction from image: {}", image_path);
 
@@ -222,8 +371,8 @@ pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, insta
 
 /// Validate if an image file is supported for OCR processing using image::guess_format
 pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
-    // Basic validation first
-    if let Err(_) = validate_image_path(file_path, config) {
+    // Enhanced validation first (includes size checks)
+    if let Err(_) = validate_image_with_format_limits(file_path, config) {
         return false;
     }
 
