@@ -27,6 +27,8 @@
 use leptess::LepTess;
 use std::fs::File;
 use std::io::{BufReader, Read};
+use std::sync::{Arc, Mutex};
+use std::collections::HashMap;
 use anyhow::Result;
 use log::info;
 
@@ -57,6 +59,78 @@ impl Default for OcrConfig {
             min_format_bytes: MIN_FORMAT_BYTES,
             max_file_size: MAX_FILE_SIZE,
         }
+    }
+}
+
+/// Thread-safe OCR instance manager for reusing Tesseract instances
+pub struct OcrInstanceManager {
+    instances: Mutex<HashMap<String, Arc<Mutex<LepTess>>>>,
+}
+
+impl OcrInstanceManager {
+    /// Create a new OCR instance manager
+    pub fn new() -> Self {
+        Self {
+            instances: Mutex::new(HashMap::new()),
+        }
+    }
+
+    /// Get or create an OCR instance for the given configuration
+    pub fn get_instance(&self, config: &OcrConfig) -> Result<Arc<Mutex<LepTess>>> {
+        let key = config.languages.clone();
+
+        // Try to get existing instance
+        {
+            let instances = self.instances.lock().unwrap();
+            if let Some(instance) = instances.get(&key) {
+                return Ok(Arc::clone(instance));
+            }
+        }
+
+        // Create new instance if none exists
+        info!("Creating new OCR instance for languages: {}", key);
+        let tess = LepTess::new(None, &key)
+            .map_err(|e| anyhow::anyhow!("Failed to initialize Tesseract OCR instance: {}", e))?;
+
+        let instance = Arc::new(Mutex::new(tess));
+
+        // Store the instance
+        {
+            let mut instances = self.instances.lock().unwrap();
+            instances.insert(key, Arc::clone(&instance));
+        }
+
+        Ok(instance)
+    }
+
+    /// Remove an instance (useful for cleanup or when configuration changes)
+    pub fn remove_instance(&self, languages: &str) {
+        let mut instances = self.instances.lock().unwrap();
+        if instances.remove(languages).is_some() {
+            info!("Removed OCR instance for languages: {}", languages);
+        }
+    }
+
+    /// Clear all instances (useful for memory cleanup)
+    pub fn clear_all_instances(&self) {
+        let mut instances = self.instances.lock().unwrap();
+        let count = instances.len();
+        instances.clear();
+        if count > 0 {
+            info!("Cleared {} OCR instances", count);
+        }
+    }
+
+    /// Get the number of cached instances
+    pub fn instance_count(&self) -> usize {
+        let instances = self.instances.lock().unwrap();
+        instances.len()
+    }
+}
+
+impl Default for OcrInstanceManager {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -110,24 +184,27 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
     Ok(())
 }
 
-/// Extract text from an image using Tesseract OCR
-pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig) -> Result<String> {
+/// Extract text from an image using Tesseract OCR with instance reuse
+pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String> {
     // Validate input before processing
     validate_image_path(image_path, config)?;
 
     info!("Starting OCR text extraction from image: {}", image_path);
 
-    // Create a new Tesseract instance with configured languages
-    let mut tess = LepTess::new(None, &config.languages)
-        .map_err(|e| anyhow::anyhow!("Failed to initialize Tesseract OCR: {}", e))?;
+    // Get or create OCR instance from the manager
+    let instance = instance_manager.get_instance(config)?;
 
-    // Set the image for OCR processing
-    tess.set_image(image_path)
-        .map_err(|e| anyhow::anyhow!("Failed to load image for OCR: {}", e))?;
+    // Perform OCR processing with the reused instance
+    let extracted_text = {
+        let mut tess = instance.lock().unwrap();
+        // Set the image for OCR processing
+        tess.set_image(image_path)
+            .map_err(|e| anyhow::anyhow!("Failed to load image for OCR: {}", e))?;
 
-    // Extract text from the image
-    let extracted_text = tess.get_utf8_text()
-        .map_err(|e| anyhow::anyhow!("Failed to extract text from image: {}", e))?;
+        // Extract text from the image
+        tess.get_utf8_text()
+            .map_err(|e| anyhow::anyhow!("Failed to extract text from image: {}", e))?
+    };
 
     // Clean up the extracted text (remove extra whitespace and empty lines)
     let cleaned_text = extracted_text

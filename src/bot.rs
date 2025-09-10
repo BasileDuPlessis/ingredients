@@ -11,6 +11,7 @@ use log::{info, error};
 // Create OCR configuration with default settings
 lazy_static::lazy_static! {
     static ref OCR_CONFIG: crate::ocr::OcrConfig = crate::ocr::OcrConfig::default();
+    static ref OCR_INSTANCE_MANAGER: crate::ocr::OcrInstanceManager = crate::ocr::OcrInstanceManager::default();
 }
 
 async fn download_file(bot: &Bot, file_id: FileId) -> Result<String> {
@@ -50,7 +51,7 @@ async fn download_and_process_image(
             }
 
             // Extract text from the image using OCR
-            match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG).await {
+            match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG, &OCR_INSTANCE_MANAGER).await {
                 Ok(extracted_text) => {
                     if extracted_text.is_empty() {
                         info!("No text found in image from user {}", chat_id);
