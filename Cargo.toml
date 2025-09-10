@@ -17,3 +17,4 @@ reqwest = { version = "0.12", features = ["json"] }
 leptess = "0.14" # Rust binding for Tesseract and Leptonica
 image = "0.24"    # For image handling if needed
 lazy_static = "1.4" # For static configuration
+rand = "0.8" # For random jitter in retry delays

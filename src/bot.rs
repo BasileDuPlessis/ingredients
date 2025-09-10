@@ -12,6 +12,7 @@ use log::{info, error};
 lazy_static::lazy_static! {
     static ref OCR_CONFIG: crate::ocr::OcrConfig = crate::ocr::OcrConfig::default();
     static ref OCR_INSTANCE_MANAGER: crate::ocr::OcrInstanceManager = crate::ocr::OcrInstanceManager::default();
+    static ref CIRCUIT_BREAKER: crate::ocr::CircuitBreaker = crate::ocr::CircuitBreaker::new(OCR_CONFIG.recovery.clone());
 }
 
 async fn download_file(bot: &Bot, file_id: FileId) -> Result<String> {
@@ -50,9 +51,16 @@ async fn download_and_process_image(
                 return Ok(String::new());
             }
 
-            // Extract text from the image using OCR
+            // Extract text from the image using OCR with circuit breaker protection
+            if CIRCUIT_BREAKER.is_open() {
+                info!("Circuit breaker is open, rejecting OCR request for user {}", chat_id);
+                bot.send_message(chat_id, "❌ OCR service is temporarily unavailable due to repeated failures. Please try again later.").await?;
+                return Ok(String::new());
+            }
+
             match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG, &OCR_INSTANCE_MANAGER).await {
                 Ok(extracted_text) => {
+                    CIRCUIT_BREAKER.record_success();
                     if extracted_text.is_empty() {
                         info!("No text found in image from user {}", chat_id);
                         bot.send_message(chat_id, "⚠️ No text was found in the image. Please try a clearer image with visible text.").await?;
@@ -71,21 +79,36 @@ async fn download_and_process_image(
                     }
                 }
                 Err(e) => {
+                    CIRCUIT_BREAKER.record_failure();
                     error!("OCR processing failed for user {}: {:?}", chat_id, e);
 
                     // Provide more specific error messages based on the error type
-                    let error_message = if e.to_string().contains("does not exist") {
-                        "❌ Image file could not be processed. Please try uploading the image again."
-                    } else if e.to_string().contains("Failed to load image") {
-                        "❌ The image format is not supported or the image is corrupted. Please try with a PNG, JPG, or BMP image."
-                    } else if e.to_string().contains("Failed to initialize Tesseract") {
-                        "❌ OCR engine initialization failed. Please try again later."
-                    } else {
-                        "❌ Failed to extract text from the image. Please try again with a different image."
+                    let error_message = match &e {
+                        crate::ocr::OcrError::ValidationError(msg) => {
+                            format!("❌ Image validation failed: {}", msg)
+                        }
+                        crate::ocr::OcrError::ImageLoadError(_) => {
+                            "❌ The image format is not supported or the image is corrupted. Please try with a PNG, JPG, or BMP image.".to_string()
+                        }
+                        crate::ocr::OcrError::InitializationError(_) => {
+                            "❌ OCR engine initialization failed. Please try again later.".to_string()
+                        }
+                        crate::ocr::OcrError::ExtractionError(_) => {
+                            "❌ Failed to extract text from the image. Please try again with a different image.".to_string()
+                        }
+                        crate::ocr::OcrError::TimeoutError(msg) => {
+                            format!("❌ OCR processing timed out: {}", msg)
+                        }
+                        crate::ocr::OcrError::_InstanceCorruptionError(_) => {
+                            "❌ OCR engine encountered an internal error. Please try again.".to_string()
+                        }
+                        crate::ocr::OcrError::_ResourceExhaustionError(_) => {
+                            "❌ System resources are exhausted. Please try again later.".to_string()
+                        }
                     };
 
-                    bot.send_message(chat_id, error_message).await?;
-                    Err(e)
+                    bot.send_message(chat_id, &error_message).await?;
+                    Err(anyhow::anyhow!("OCR processing failed: {:?}", e))
                 }
             }
         }

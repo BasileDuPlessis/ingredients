@@ -29,14 +29,136 @@ use std::fs::File;
 use std::io::{BufReader, Read};
 use std::sync::{Arc, Mutex};
 use std::collections::HashMap;
+use std::time::{Duration, Instant};
 use anyhow::Result;
-use log::info;
+use log::{info, warn, error};
 
 // Constants for OCR configuration
 const DEFAULT_LANGUAGES: &str = "eng+fra";
 const FORMAT_DETECTION_BUFFER_SIZE: usize = 32;
 const MIN_FORMAT_BYTES: usize = 8;
 const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10MB limit for image files
+
+/// Custom error types for OCR operations
+#[derive(Debug, Clone)]
+pub enum OcrError {
+    /// File validation errors
+    ValidationError(String),
+    /// OCR engine initialization errors
+    InitializationError(String),
+    /// Image loading errors
+    ImageLoadError(String),
+    /// Text extraction errors
+    ExtractionError(String),
+    /// Instance corruption errors
+    _InstanceCorruptionError(String),
+    /// Timeout errors
+    TimeoutError(String),
+    /// Resource exhaustion errors
+    _ResourceExhaustionError(String),
+}
+
+impl std::fmt::Display for OcrError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            OcrError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
+            OcrError::InitializationError(msg) => write!(f, "Initialization error: {}", msg),
+            OcrError::ImageLoadError(msg) => write!(f, "Image load error: {}", msg),
+            OcrError::ExtractionError(msg) => write!(f, "Extraction error: {}", msg),
+            OcrError::_InstanceCorruptionError(msg) => write!(f, "Instance corruption error: {}", msg),
+            OcrError::TimeoutError(msg) => write!(f, "Timeout error: {}", msg),
+            OcrError::_ResourceExhaustionError(msg) => write!(f, "Resource exhaustion error: {}", msg),
+        }
+    }
+}
+
+impl std::error::Error for OcrError {}
+
+/// Recovery configuration for error handling
+#[derive(Debug, Clone)]
+pub struct RecoveryConfig {
+    /// Maximum number of retry attempts
+    pub max_retries: u32,
+    /// Base delay between retries in milliseconds
+    pub base_retry_delay_ms: u64,
+    /// Maximum delay between retries in milliseconds
+    pub max_retry_delay_ms: u64,
+    /// Timeout for OCR operations in seconds
+    pub operation_timeout_secs: u64,
+    /// Circuit breaker failure threshold
+    pub circuit_breaker_threshold: u32,
+    /// Circuit breaker reset timeout in seconds
+    pub circuit_breaker_reset_secs: u64,
+}
+
+impl Default for RecoveryConfig {
+    fn default() -> Self {
+        Self {
+            max_retries: 3,
+            base_retry_delay_ms: 1000, // 1 second
+            max_retry_delay_ms: 10000, // 10 seconds
+            operation_timeout_secs: 30, // 30 seconds
+            circuit_breaker_threshold: 5,
+            circuit_breaker_reset_secs: 60, // 1 minute
+        }
+    }
+}
+
+impl From<anyhow::Error> for OcrError {
+    fn from(err: anyhow::Error) -> Self {
+        OcrError::ExtractionError(err.to_string())
+    }
+}
+
+/// Circuit breaker for OCR operations
+#[derive(Debug)]
+pub struct CircuitBreaker {
+    failure_count: Mutex<u32>,
+    last_failure_time: Mutex<Option<Instant>>,
+    config: RecoveryConfig,
+}
+
+impl CircuitBreaker {
+    pub fn new(config: RecoveryConfig) -> Self {
+        Self {
+            failure_count: Mutex::new(0),
+            last_failure_time: Mutex::new(None),
+            config,
+        }
+    }
+
+    /// Check if circuit breaker is open
+    pub fn is_open(&self) -> bool {
+        let failure_count = *self.failure_count.lock().unwrap();
+        let last_failure = *self.last_failure_time.lock().unwrap();
+
+        if failure_count >= self.config.circuit_breaker_threshold {
+            if let Some(last_time) = last_failure {
+                let elapsed = last_time.elapsed();
+                if elapsed < Duration::from_secs(self.config.circuit_breaker_reset_secs) {
+                    return true; // Circuit is still open
+                } else {
+                    // Reset circuit breaker
+                    *self.failure_count.lock().unwrap() = 0;
+                    *self.last_failure_time.lock().unwrap() = None;
+                }
+            }
+        }
+        false
+    }
+
+    /// Record a failure
+    pub fn record_failure(&self) {
+        *self.failure_count.lock().unwrap() += 1;
+        *self.last_failure_time.lock().unwrap() = Some(Instant::now());
+    }
+
+    /// Record a success
+    pub fn record_success(&self) {
+        *self.failure_count.lock().unwrap() = 0;
+        *self.last_failure_time.lock().unwrap() = None;
+    }
+}
 
 /// Configuration structure for OCR processing
 #[derive(Debug, Clone)]
@@ -51,6 +173,8 @@ pub struct OcrConfig {
     pub max_file_size: u64,
     /// Format-specific size limits
     pub format_limits: FormatSizeLimits,
+    /// Recovery and error handling configuration
+    pub recovery: RecoveryConfig,
 }
 
 /// Format-specific file size limits for different image formats
@@ -88,6 +212,7 @@ impl Default for OcrConfig {
             min_format_bytes: MIN_FORMAT_BYTES,
             max_file_size: MAX_FILE_SIZE,
             format_limits: FormatSizeLimits::default(),
+            recovery: RecoveryConfig::default(),
         }
     }
 }
@@ -134,7 +259,7 @@ impl OcrInstanceManager {
     }
 
     /// Remove an instance (useful for cleanup or when configuration changes)
-    pub fn remove_instance(&self, languages: &str) {
+    pub fn _remove_instance(&self, languages: &str) {
         let mut instances = self.instances.lock().unwrap();
         if instances.remove(languages).is_some() {
             info!("Removed OCR instance for languages: {}", languages);
@@ -142,7 +267,7 @@ impl OcrInstanceManager {
     }
 
     /// Clear all instances (useful for memory cleanup)
-    pub fn clear_all_instances(&self) {
+    pub fn _clear_all_instances(&self) {
         let mut instances = self.instances.lock().unwrap();
         let count = instances.len();
         instances.clear();
@@ -152,7 +277,7 @@ impl OcrInstanceManager {
     }
 
     /// Get the number of cached instances
-    pub fn instance_count(&self) -> usize {
+    pub fn _instance_count(&self) -> usize {
         let instances = self.instances.lock().unwrap();
         instances.len()
     }
@@ -334,39 +459,87 @@ fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
 }
 
 /// Extract text from an image using Tesseract OCR with instance reuse
-pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String> {
+pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String, OcrError> {
     // Validate input with enhanced format-specific validation
-    validate_image_with_format_limits(image_path, config)?;
+    validate_image_with_format_limits(image_path, config)
+        .map_err(|e| OcrError::ValidationError(e.to_string()))?;
 
     info!("Starting OCR text extraction from image: {}", image_path);
 
-    // Get or create OCR instance from the manager
-    let instance = instance_manager.get_instance(config)?;
+    // Implement retry logic with exponential backoff
+    let mut attempt = 0;
+    let max_attempts = config.recovery.max_retries + 1; // +1 for initial attempt
 
-    // Perform OCR processing with the reused instance
-    let extracted_text = {
-        let mut tess = instance.lock().unwrap();
-        // Set the image for OCR processing
-        tess.set_image(image_path)
-            .map_err(|e| anyhow::anyhow!("Failed to load image for OCR: {}", e))?;
+    loop {
+        attempt += 1;
 
-        // Extract text from the image
-        tess.get_utf8_text()
-            .map_err(|e| anyhow::anyhow!("Failed to extract text from image: {}", e))?
-    };
+        match perform_ocr_extraction(image_path, config, instance_manager).await {
+            Ok(text) => {
+                info!("OCR extraction completed successfully on attempt {}. Extracted {} characters of text",
+                      attempt, text.len());
+                return Ok(text);
+            }
+            Err(err) => {
+                if attempt >= max_attempts {
+                    error!("OCR extraction failed after {} attempts: {:?}", max_attempts, err);
+                    return Err(err);
+                }
 
-    // Clean up the extracted text (remove extra whitespace and empty lines)
-    let cleaned_text = extracted_text
-        .trim()
-        .lines()
-        .map(|line| line.trim())
-        .filter(|line| !line.is_empty())
-        .collect::<Vec<&str>>()
-        .join("\n");
+                let delay_ms = calculate_retry_delay(attempt, &config.recovery);
+                warn!("OCR extraction attempt {} failed: {:?}. Retrying in {}ms", attempt, err, delay_ms);
 
-    info!("OCR extraction completed. Extracted {} characters of text", cleaned_text.len());
+                tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
+            }
+        }
+    }
+}
 
-    Ok(cleaned_text)
+/// Helper function to perform OCR extraction with timeout
+async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String, OcrError> {
+    // Create a timeout for the operation
+    let timeout_duration = tokio::time::Duration::from_secs(config.recovery.operation_timeout_secs);
+
+    tokio::time::timeout(timeout_duration, async {
+        // Get or create OCR instance from the manager
+        let instance = instance_manager.get_instance(config)
+            .map_err(|e| OcrError::InitializationError(e.to_string()))?;
+
+        // Perform OCR processing with the reused instance
+        let extracted_text = {
+            let mut tess = instance.lock().unwrap();
+            // Set the image for OCR processing
+            tess.set_image(image_path)
+                .map_err(|e| OcrError::ImageLoadError(format!("Failed to load image for OCR: {}", e)))?;
+
+            // Extract text from the image
+            tess.get_utf8_text()
+                .map_err(|e| OcrError::ExtractionError(format!("Failed to extract text from image: {}", e)))?
+        };
+
+        // Clean up the extracted text (remove extra whitespace and empty lines)
+        let cleaned_text = extracted_text
+            .trim()
+            .lines()
+            .map(|line| line.trim())
+            .filter(|line| !line.is_empty())
+            .collect::<Vec<&str>>()
+            .join("\n");
+
+        Ok(cleaned_text)
+    })
+    .await
+    .map_err(|_| OcrError::TimeoutError(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))?
+}
+
+/// Calculate retry delay with exponential backoff
+fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
+    let base_delay = recovery.base_retry_delay_ms as f64;
+    let exponential_delay = base_delay * (2.0_f64).powf((attempt - 1) as f64);
+    let delay = exponential_delay.min(recovery.max_retry_delay_ms as f64) as u64;
+
+    // Add some jitter to prevent thundering herd
+    let jitter = (rand::random::<u64>() % (delay / 4)) as u64;
+    delay + jitter
 }
 
 /// Validate if an image file is supported for OCR processing using image::guess_format
