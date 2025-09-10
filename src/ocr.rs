@@ -593,6 +593,15 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                             let estimated_memory_mb = estimate_memory_usage(file_size, &format);
                             info!("Estimated memory usage for {}: {}MB", image_path, estimated_memory_mb);
 
+                            // Check if estimated memory usage exceeds safe limits
+                            let max_memory_mb = 100.0; // 100MB memory limit for OCR processing
+                            if estimated_memory_mb > max_memory_mb {
+                                return Err(anyhow::anyhow!(
+                                    "Estimated memory usage too high: {}MB (maximum allowed: {}MB). File would cause out-of-memory errors.",
+                                    estimated_memory_mb, max_memory_mb
+                                ));
+                            }
+
                             Ok(())
                         }
                         Err(_) => {
