@@ -10,6 +10,7 @@ use env_logger;
 
 mod db;
 mod bot;
+mod ocr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
