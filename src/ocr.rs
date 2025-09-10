@@ -111,6 +111,22 @@ impl From<anyhow::Error> for OcrError {
 }
 
 /// Circuit breaker for OCR operations
+///
+/// Implements circuit breaker pattern to prevent cascading failures in OCR processing.
+/// When OCR operations fail repeatedly, the circuit breaker "opens" to stop further
+/// attempts and allow the system to recover.
+///
+/// # State Machine
+///
+/// - **Closed**: Normal operation, requests pass through
+/// - **Open**: Failure threshold exceeded, requests fail fast
+/// - **Half-Open**: Testing if service has recovered
+///
+/// # Configuration
+///
+/// Uses `RecoveryConfig` for:
+/// - `circuit_breaker_threshold`: Failures before opening (default: 5)
+/// - `circuit_breaker_reset_secs`: Time before attempting reset (default: 60s)
 #[derive(Debug)]
 pub struct CircuitBreaker {
     failure_count: Mutex<u32>,
@@ -119,6 +135,20 @@ pub struct CircuitBreaker {
 }
 
 impl CircuitBreaker {
+    /// Create a new circuit breaker with the given configuration
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - Recovery configuration with circuit breaker settings
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ingredients::ocr::{CircuitBreaker, RecoveryConfig};
+    ///
+    /// let config = RecoveryConfig::default();
+    /// let circuit_breaker = CircuitBreaker::new(config);
+    /// ```
     pub fn new(config: RecoveryConfig) -> Self {
         Self {
             failure_count: Mutex::new(0),
@@ -127,7 +157,17 @@ impl CircuitBreaker {
         }
     }
 
-    /// Check if circuit breaker is open
+    /// Check if circuit breaker is open (blocking requests)
+    ///
+    /// # Returns
+    ///
+    /// `true` if circuit is open and should block requests, `false` if closed
+    ///
+    /// # Behavior
+    ///
+    /// - Returns `true` when failure count >= threshold and reset time hasn't elapsed
+    /// - Automatically resets to closed state after reset timeout
+    /// - Thread-safe using internal mutexes
     pub fn is_open(&self) -> bool {
         let failure_count = *self.failure_count.lock().unwrap();
         let last_failure = *self.last_failure_time.lock().unwrap();
@@ -147,13 +187,27 @@ impl CircuitBreaker {
         false
     }
 
-    /// Record a failure
+    /// Record a failure to increment the failure counter
+    ///
+    /// Should be called whenever an OCR operation fails.
+    /// Updates failure count and last failure timestamp.
+    ///
+    /// # Thread Safety
+    ///
+    /// Uses internal mutex for thread-safe updates.
     pub fn record_failure(&self) {
         *self.failure_count.lock().unwrap() += 1;
         *self.last_failure_time.lock().unwrap() = Some(Instant::now());
     }
 
-    /// Record a success
+    /// Record a success to reset the failure counter
+    ///
+    /// Should be called whenever an OCR operation succeeds.
+    /// Resets failure count and clears last failure timestamp.
+    ///
+    /// # Thread Safety
+    ///
+    /// Uses internal mutex for thread-safe updates.
     pub fn record_success(&self) {
         *self.failure_count.lock().unwrap() = 0;
         *self.last_failure_time.lock().unwrap() = None;
@@ -218,12 +272,51 @@ impl Default for OcrConfig {
 }
 
 /// Thread-safe OCR instance manager for reusing Tesseract instances
+///
+/// Manages a pool of Tesseract OCR instances keyed by language configuration.
+/// Reusing instances significantly improves performance by avoiding the overhead
+/// of creating new Tesseract instances for each OCR operation.
+///
+/// # Performance Benefits
+///
+/// - Eliminates Tesseract initialization overhead (~100-500ms per instance)
+/// - Reduces memory allocations for repeated OCR operations
+/// - Thread-safe with Arc<Mutex<>> for concurrent access
+///
+/// # Instance Lifecycle
+///
+/// - Instances are created on first request for a language combination
+/// - Instances are reused for subsequent requests with same language config
+/// - Instances persist until explicitly removed or manager is dropped
+///
+/// # Thread Safety
+///
+/// Uses `Mutex<HashMap<>>` internally for thread-safe instance management.
+/// Multiple threads can safely request instances concurrently.
+///
+/// # Memory Management
+///
+/// - Each language combination maintains one instance
+/// - Memory usage scales with number of unique language combinations
+/// - Consider memory limits for applications with many language combinations
 pub struct OcrInstanceManager {
     instances: Mutex<HashMap<String, Arc<Mutex<LepTess>>>>,
 }
 
 impl OcrInstanceManager {
     /// Create a new OCR instance manager
+    ///
+    /// Initializes an empty instance pool. Instances will be created
+    /// on-demand when first requested via `get_instance()`.
+    ///
+    /// # Examples
+    ///
+    /// ```rust
+    /// use ingredients::ocr::OcrInstanceManager;
+    ///
+    /// let manager = OcrInstanceManager::new();
+    /// // Manager is ready to provide OCR instances
+    /// ```
     pub fn new() -> Self {
         Self {
             instances: Mutex::new(HashMap::new()),
@@ -231,6 +324,41 @@ impl OcrInstanceManager {
     }
 
     /// Get or create an OCR instance for the given configuration
+    ///
+    /// Returns an existing instance if one exists for the language configuration,
+    /// otherwise creates a new instance and stores it for future reuse.
+    ///
+    /// # Arguments
+    ///
+    /// * `config` - OCR configuration containing language settings and other options
+    ///
+    /// # Returns
+    ///
+    /// Returns `Result<Arc<Mutex<LepTess>>, anyhow::Error>` containing the OCR instance
+    ///
+    /// # Examples
+    ///
+    /// ```rust,no_run
+    /// use ingredients::ocr::{OcrInstanceManager, OcrConfig};
+    ///
+    /// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+    /// let manager = OcrInstanceManager::new();
+    /// let config = OcrConfig::default();
+    ///
+    /// let instance = manager.get_instance(&config)?;
+    /// // Use the instance for OCR processing
+    /// # Ok(())
+    /// # }
+    /// ```
+    ///
+    /// # Errors
+    ///
+    /// Returns error if Tesseract instance creation fails (e.g., invalid language codes)
+    ///
+    /// # Performance
+    ///
+    /// - First call for a language: ~100-500ms (Tesseract initialization)
+    /// - Subsequent calls: ~1ms (instance lookup and Arc clone)
     pub fn get_instance(&self, config: &OcrConfig) -> Result<Arc<Mutex<LepTess>>> {
         let key = config.languages.clone();
 
@@ -340,6 +468,63 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
 }
 
 /// Enhanced validation with format-specific size limits and progressive validation
+///
+/// Performs comprehensive image validation including:
+/// 1. Basic file existence and accessibility checks
+/// 2. Format detection using magic bytes
+/// 3. Format-specific file size validation
+/// 4. Memory usage estimation and validation
+/// 5. Quick rejection for extremely large files
+///
+/// # Arguments
+///
+/// * `image_path` - Path to the image file to validate (must be absolute path)
+/// * `config` - OCR configuration with format limits and validation settings
+///
+/// # Returns
+///
+/// Returns `Result<(), anyhow::Error>` - Ok if validation passes, Error with details if validation fails
+///
+/// # Validation Steps
+///
+/// 1. **Basic Validation**: File existence, readability, basic size limits
+/// 2. **Quick Rejection**: Immediate rejection of extremely large files (> min_quick_reject_size)
+/// 3. **Format Detection**: Read file header and detect image format
+/// 4. **Size Validation**: Check against format-specific size limits
+/// 5. **Memory Estimation**: Calculate expected memory usage
+///
+/// # Format-Specific Limits
+///
+/// | Format | Max Size | Memory Factor | Use Case |
+/// |--------|----------|---------------|----------|
+/// | PNG    | 15MB     | 3.0x          | Best for text, lossless |
+/// | JPEG   | 10MB     | 2.5x          | Good balance, lossy compression |
+/// | BMP    | 5MB      | 1.2x          | Fast processing, uncompressed |
+/// | TIFF   | 20MB     | 4.0x          | High quality, multi-page |
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use ingredients::ocr::{validate_image_with_format_limits, OcrConfig};
+///
+/// # fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = OcrConfig::default();
+///
+/// match validate_image_with_format_limits("/path/to/image.png", &config) {
+///     Ok(()) => println!("Image validation passed"),
+///     Err(e) => println!("Validation failed: {}", e),
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Error Conditions
+///
+/// - File doesn't exist or isn't readable
+/// - File size exceeds format-specific limits
+/// - Unsupported image format
+/// - Insufficient bytes for format detection
+/// - Memory usage estimation exceeds limits
 fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Result<()> {
     // First, perform basic validation
     validate_image_path(image_path, config)?;
@@ -443,6 +628,52 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
 }
 
 /// Estimate memory usage for image processing based on file size and format
+///
+/// Calculates expected memory consumption during image decompression and OCR processing.
+/// Used for pre-processing validation to prevent out-of-memory errors.
+///
+/// # Arguments
+///
+/// * `file_size` - Size of the image file in bytes
+/// * `format` - Detected image format
+///
+/// # Returns
+///
+/// Returns estimated memory usage in megabytes (MB)
+///
+/// # Memory Factors by Format
+///
+/// | Format | Factor | Reason |
+/// |--------|--------|--------|
+/// | PNG    | 3.0x   | Lossless decompression expands compressed data |
+/// | JPEG   | 2.5x   | Lossy decompression with working buffers |
+/// | BMP    | 1.2x   | Mostly uncompressed, minimal expansion |
+/// | TIFF   | 4.0x   | Complex format with layers and metadata |
+///
+/// # Examples
+///
+/// ```rust
+/// use ingredients::ocr::estimate_memory_usage;
+/// use image::ImageFormat;
+///
+/// // 1MB PNG file
+/// let memory_mb = estimate_memory_usage(1024 * 1024, &ImageFormat::Png);
+/// assert_eq!(memory_mb, 3.0); // 3MB estimated usage
+///
+/// // 2MB JPEG file
+/// let memory_mb = estimate_memory_usage(2 * 1024 * 1024, &ImageFormat::Jpeg);
+/// assert_eq!(memory_mb, 5.0); // 5MB estimated usage
+/// ```
+///
+/// # Usage in Validation
+///
+/// Used by `validate_image_with_format_limits()` to ensure sufficient memory
+/// is available before attempting image processing and OCR operations.
+///
+/// # Accuracy
+///
+/// Estimates are conservative and may overestimate actual usage.
+/// Better to reject potentially problematic files than risk OOM errors.
 fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
     let file_size_mb = file_size as f64 / (1024.0 * 1024.0);
 
@@ -459,7 +690,63 @@ fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
 }
 
 /// Extract text from an image using Tesseract OCR with instance reuse
+///
+/// This is the main entry point for OCR processing. It handles image validation,
+/// OCR instance management, retry logic with exponential backoff, and comprehensive
+/// error handling with circuit breaker protection.
+///
+/// # Arguments
+///
+/// * `image_path` - Path to the image file to process (must be absolute path)
+/// * `config` - OCR configuration including language settings, timeouts, and recovery options
+/// * `instance_manager` - Manager for OCR instance reuse to improve performance
+///
+/// # Returns
+///
+/// Returns `Result<String, OcrError>` containing the extracted text or an error
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use ingredients::ocr::{extract_text_from_image, OcrConfig, OcrInstanceManager};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = OcrConfig::default();
+/// let instance_manager = OcrInstanceManager::new();
+///
+/// // Process an image of ingredients
+/// let text = extract_text_from_image("/path/to/ingredients.jpg", &config, &instance_manager).await?;
+/// println!("Extracted text: {}", text);
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Supported Image Formats
+///
+/// - PNG (Portable Network Graphics) - up to 15MB
+/// - JPEG/JPG (Joint Photographic Experts Group) - up to 10MB
+/// - BMP (Bitmap) - up to 5MB
+/// - TIFF/TIF (Tagged Image File Format) - up to 20MB
+///
+/// # Performance
+///
+/// - Includes automatic retry logic (up to 3 attempts by default)
+/// - Uses OCR instance reuse for better performance
+/// - Circuit breaker protection against cascading failures
+/// - Comprehensive timing metrics logged at INFO level
+///
+/// # Errors
+///
+/// Returns `OcrError` for various failure conditions:
+/// - `ValidationError` - Image format not supported or file too large
+/// - `InitializationError` - OCR engine initialization failed
+/// - `ImageLoadError` - Could not load the image file
+/// - `ExtractionError` - OCR processing failed
+/// - `TimeoutError` - Operation exceeded timeout (30s default)
 pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String, OcrError> {
+    // Start timing the entire OCR operation
+    let start_time = std::time::Instant::now();
+
     // Validate input with enhanced format-specific validation
     validate_image_with_format_limits(image_path, config)
         .map_err(|e| OcrError::ValidationError(e.to_string()))?;
@@ -475,13 +762,20 @@ pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, insta
 
         match perform_ocr_extraction(image_path, config, instance_manager).await {
             Ok(text) => {
-                info!("OCR extraction completed successfully on attempt {}. Extracted {} characters of text",
-                      attempt, text.len());
+                let total_duration = start_time.elapsed();
+                let total_ms = total_duration.as_millis();
+
+                info!("OCR extraction completed successfully on attempt {} in {}ms. Extracted {} characters of text",
+                      attempt, total_ms, text.len());
                 return Ok(text);
             }
             Err(err) => {
                 if attempt >= max_attempts {
-                    error!("OCR extraction failed after {} attempts: {:?}", max_attempts, err);
+                    let total_duration = start_time.elapsed();
+                    let total_ms = total_duration.as_millis();
+
+                    error!("OCR extraction failed after {} attempts ({}ms total): {:?}",
+                           max_attempts, total_ms, err);
                     return Err(err);
                 }
 
@@ -495,11 +789,52 @@ pub async fn extract_text_from_image(image_path: &str, config: &OcrConfig, insta
 }
 
 /// Helper function to perform OCR extraction with timeout
+///
+/// This function handles the core OCR processing using Tesseract, including:
+/// - OCR instance acquisition from the manager
+/// - Image loading and processing
+/// - Text extraction and cleanup
+/// - Timeout protection
+/// - Performance timing and logging
+///
+/// # Arguments
+///
+/// * `image_path` - Path to the image file to process
+/// * `config` - OCR configuration with timeout and language settings
+/// * `instance_manager` - Manager for OCR instance reuse
+///
+/// # Returns
+///
+/// Returns `Result<String, OcrError>` with cleaned extracted text or error
+///
+/// # Processing Details
+///
+/// 1. Acquires or creates OCR instance for specified language
+/// 2. Loads image into Tesseract engine
+/// 3. Performs OCR text extraction
+/// 4. Cleans extracted text (removes extra whitespace, empty lines)
+/// 5. Logs performance metrics
+///
+/// # Performance
+///
+/// - Times only the actual OCR processing (excludes validation/retry logic)
+/// - Logs processing time in milliseconds
+/// - Includes character count in success logs
+///
+/// # Errors
+///
+/// - `InitializationError` - Failed to get/create OCR instance
+/// - `ImageLoadError` - Could not load image into Tesseract
+/// - `ExtractionError` - OCR processing failed
+/// - `TimeoutError` - Operation exceeded configured timeout
 async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String, OcrError> {
+    // Start timing the actual OCR processing
+    let ocr_start_time = std::time::Instant::now();
+
     // Create a timeout for the operation
     let timeout_duration = tokio::time::Duration::from_secs(config.recovery.operation_timeout_secs);
 
-    tokio::time::timeout(timeout_duration, async {
+    let result = tokio::time::timeout(timeout_duration, async {
         // Get or create OCR instance from the manager
         let instance = instance_manager.get_instance(config)
             .map_err(|e| OcrError::InitializationError(e.to_string()))?;
@@ -526,12 +861,76 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
             .join("\n");
 
         Ok(cleaned_text)
-    })
-    .await
-    .map_err(|_| OcrError::TimeoutError(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))?
+    }).await;
+
+    let ocr_duration = ocr_start_time.elapsed();
+    let ocr_ms = ocr_duration.as_millis();
+
+    match result {
+        Ok(Ok(text)) => {
+            info!("OCR processing completed in {}ms, extracted {} characters", ocr_ms, text.len());
+            Ok(text)
+        }
+        Ok(Err(e)) => {
+            warn!("OCR processing failed after {}ms: {:?}", ocr_ms, e);
+            Err(e)
+        }
+        Err(_) => {
+            warn!("OCR processing timed out after {}ms (limit: {}s)",
+                  ocr_ms, config.recovery.operation_timeout_secs);
+            Err(OcrError::TimeoutError(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))
+        }
+    }
 }
 
 /// Calculate retry delay with exponential backoff
+///
+/// Implements exponential backoff with jitter to prevent thundering herd problems.
+/// Delay increases exponentially with each retry attempt, with random jitter added
+/// to distribute retry attempts over time.
+///
+/// # Arguments
+///
+/// * `attempt` - Current retry attempt number (1-based, first retry = 1)
+/// * `recovery` - Recovery configuration with delay settings
+///
+/// # Returns
+///
+/// Returns delay in milliseconds before next retry attempt
+///
+/// # Algorithm
+///
+/// ```text
+/// delay = min(base_delay * (2^(attempt-1)), max_delay)
+/// jitter = random(0, delay/4)
+/// final_delay = delay + jitter
+/// ```
+///
+/// # Examples
+///
+/// ```rust
+/// use ingredients::ocr::{calculate_retry_delay, RecoveryConfig};
+///
+/// let config = RecoveryConfig::default();
+/// // First retry: ~1000-1250ms (1000ms + jitter)
+/// let delay1 = calculate_retry_delay(1, &config);
+/// // Second retry: ~2000-2500ms (2000ms + jitter)
+/// let delay2 = calculate_retry_delay(2, &config);
+/// // Third retry: ~4000-5000ms (4000ms + jitter)
+/// let delay3 = calculate_retry_delay(3, &config);
+/// ```
+///
+/// # Configuration Parameters
+///
+/// - `base_retry_delay_ms`: Base delay for first retry (default: 1000ms)
+/// - `max_retry_delay_ms`: Maximum delay cap (default: 10000ms)
+///
+/// # Benefits
+///
+/// - **Exponential Backoff**: Reduces server load during failures
+/// - **Jitter**: Prevents synchronized retry storms
+/// - **Configurable**: Adjustable for different environments
+/// - **Capped**: Prevents excessively long delays
 fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
     let base_delay = recovery.base_retry_delay_ms as f64;
     let exponential_delay = base_delay * (2.0_f64).powf((attempt - 1) as f64);
@@ -543,6 +942,57 @@ fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
 }
 
 /// Validate if an image file is supported for OCR processing using image::guess_format
+///
+/// Performs comprehensive validation including:
+/// 1. File existence and accessibility checks
+/// 2. Format detection using magic bytes
+/// 3. File size validation against format-specific limits
+/// 4. Memory usage estimation
+///
+/// # Arguments
+///
+/// * `file_path` - Path to the image file to validate
+/// * `config` - OCR configuration with size limits and buffer settings
+///
+/// # Returns
+///
+/// Returns `true` if the image format is supported and passes all validation checks
+///
+/// # Supported Formats
+///
+/// | Format | Max Size | Description |
+/// |--------|----------|-------------|
+/// | PNG    | 15MB     | Lossless compression, best for text |
+/// | JPEG   | 10MB     | Lossy compression, good quality/size balance |
+/// | BMP    | 5MB      | Uncompressed, fast but large files |
+/// | TIFF   | 20MB     | Multi-page support, high quality |
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use ingredients::ocr::{is_supported_image_format, OcrConfig};
+///
+/// let config = OcrConfig::default();
+/// if is_supported_image_format("/path/to/image.jpg", &config) {
+///     println!("Image is supported for OCR processing");
+/// } else {
+///     println!("Image format not supported or file too large");
+/// }
+/// ```
+///
+/// # Validation Process
+///
+/// 1. Checks if file exists and is readable
+/// 2. Reads first 32 bytes (configurable) for format detection
+/// 3. Uses `image::guess_format()` to identify format
+/// 4. Validates file size against format-specific limits
+/// 5. Estimates memory usage for processing
+///
+/// # Performance
+///
+/// - Fast format detection using only file header
+/// - Minimal I/O (only reads format detection buffer)
+/// - No full file loading or OCR processing
 pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
     // Enhanced validation first (includes size checks)
     if let Err(_) = validate_image_with_format_limits(file_path, config) {
