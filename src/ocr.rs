@@ -4,6 +4,11 @@ use std::io::{BufReader, Read};
 use anyhow::Result;
 use log::info;
 
+// Constants for OCR configuration
+const DEFAULT_LANGUAGES: &str = "eng+fra";
+const FORMAT_DETECTION_BUFFER_SIZE: usize = 32;
+const MIN_FORMAT_BYTES: usize = 8;
+
 /// Extract text from an image using Tesseract OCR
 pub async fn extract_text_from_image(image_path: &str) -> Result<String> {
     info!("Starting OCR text extraction from image: {}", image_path);
@@ -14,7 +19,7 @@ pub async fn extract_text_from_image(image_path: &str) -> Result<String> {
     }
 
     // Create a new Tesseract instance with English and French languages
-    let mut tess = LepTess::new(None, "eng+fra")
+    let mut tess = LepTess::new(None, DEFAULT_LANGUAGES)
         .map_err(|e| anyhow::anyhow!("Failed to initialize Tesseract OCR: {}", e))?;
 
     // Set the image for OCR processing
@@ -44,10 +49,10 @@ pub fn is_supported_image_format(file_path: &str) -> bool {
     match File::open(file_path) {
         Ok(file) => {
             let mut reader = BufReader::new(file);
-            let mut buffer = vec![0; 32]; // Pre-allocate 32 bytes
+            let mut buffer = vec![0; FORMAT_DETECTION_BUFFER_SIZE]; // Pre-allocate buffer for format detection
 
             match reader.read(&mut buffer) {
-                Ok(bytes_read) if bytes_read >= 8 => {
+                Ok(bytes_read) if bytes_read >= MIN_FORMAT_BYTES => {
                     // Truncate buffer to actual bytes read
                     buffer.truncate(bytes_read);
 
@@ -79,7 +84,7 @@ pub fn is_supported_image_format(file_path: &str) -> bool {
                     }
                 }
                 Ok(bytes_read) => {
-                    info!("Could not read enough bytes to determine image format for file: {} (read {} bytes, need at least 8)", file_path, bytes_read);
+                    info!("Could not read enough bytes to determine image format for file: {} (read {} bytes, need at least {})", file_path, bytes_read, MIN_FORMAT_BYTES);
                     false
                 }
                 Err(e) => {
