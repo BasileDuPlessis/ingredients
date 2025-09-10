@@ -602,3 +602,306 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::io::Write;
+    use tempfile::NamedTempFile;
+
+    /// Test OCR configuration defaults
+    #[test]
+    fn test_ocr_config_defaults() {
+        let config = OcrConfig::default();
+
+        assert_eq!(config.languages, DEFAULT_LANGUAGES);
+        assert_eq!(config.buffer_size, FORMAT_DETECTION_BUFFER_SIZE);
+        assert_eq!(config.min_format_bytes, MIN_FORMAT_BYTES);
+        assert_eq!(config.max_file_size, MAX_FILE_SIZE);
+        assert!(config.recovery.max_retries > 0);
+        assert!(config.recovery.operation_timeout_secs > 0);
+    }
+
+    /// Test recovery configuration defaults
+    #[test]
+    fn test_recovery_config_defaults() {
+        let recovery = RecoveryConfig::default();
+
+        assert_eq!(recovery.max_retries, 3);
+        assert_eq!(recovery.base_retry_delay_ms, 1000);
+        assert_eq!(recovery.max_retry_delay_ms, 10000);
+        assert_eq!(recovery.operation_timeout_secs, 30);
+        assert_eq!(recovery.circuit_breaker_threshold, 5);
+        assert_eq!(recovery.circuit_breaker_reset_secs, 60);
+    }
+
+    /// Test format size limits defaults
+    #[test]
+    fn test_format_size_limits_defaults() {
+        let limits = FormatSizeLimits::default();
+
+        assert_eq!(limits.png_max_size, 15 * 1024 * 1024);   // 15MB
+        assert_eq!(limits.jpeg_max_size, 10 * 1024 * 1024);  // 10MB
+        assert_eq!(limits.bmp_max_size, 5 * 1024 * 1024);    // 5MB
+        assert_eq!(limits.tiff_max_size, 20 * 1024 * 1024);  // 20MB
+        assert_eq!(limits.min_quick_reject_size, 50 * 1024 * 1024); // 50MB
+    }
+
+    /// Test circuit breaker state transitions
+    #[test]
+    fn test_circuit_breaker_state_transitions() {
+        let config = RecoveryConfig {
+            circuit_breaker_threshold: 2,
+            ..Default::default()
+        };
+        let circuit_breaker = CircuitBreaker::new(config);
+
+        // Initially closed
+        assert!(!circuit_breaker.is_open());
+
+        // Record failures
+        circuit_breaker.record_failure();
+        assert!(!circuit_breaker.is_open()); // Still closed (1 failure)
+
+        circuit_breaker.record_failure();
+        assert!(circuit_breaker.is_open()); // Now open (2 failures)
+
+        // Note: In a real scenario, we'd wait for the reset timeout to transition to half-open
+        // For this test, we just verify the failure recording works
+    }
+
+    /// Test instance manager operations
+    #[test]
+    fn test_instance_manager_operations() {
+        let manager = OcrInstanceManager::new();
+
+        // Initially empty
+        assert_eq!(manager._instance_count(), 0);
+
+        // Create config
+        let config = OcrConfig::default();
+
+        // Get instance (creates new one)
+        let instance1 = manager.get_instance(&config).unwrap();
+        assert_eq!(manager._instance_count(), 1);
+
+        // Get same instance again (reuses existing)
+        let instance2 = manager.get_instance(&config).unwrap();
+        assert_eq!(manager._instance_count(), 1);
+
+        // Verify they're the same instance
+        assert!(Arc::ptr_eq(&instance1, &instance2));
+
+        // Remove instance
+        manager._remove_instance(&config.languages);
+        assert_eq!(manager._instance_count(), 0);
+
+        // Clear all instances
+        manager._clear_all_instances();
+        assert_eq!(manager._instance_count(), 0);
+    }
+
+    /// Test image path validation with valid inputs
+    #[test]
+    fn test_validate_image_path_valid() {
+        let config = OcrConfig::default();
+
+        // Create a temporary file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(b"test content").unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Should pass validation
+        let result = validate_image_path(&temp_path, &config);
+        assert!(result.is_ok());
+    }
+
+    /// Test image path validation with invalid inputs
+    #[test]
+    fn test_validate_image_path_invalid() {
+        let config = OcrConfig::default();
+
+        // Test empty path
+        let result = validate_image_path("", &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("cannot be empty"));
+
+        // Test non-existent file
+        let result = validate_image_path("/non/existent/file.png", &config);
+        assert!(result.is_err());
+        // The error message might vary by OS, so just check it's an error
+        assert!(result.is_err());
+    }
+
+    /// Test memory usage estimation for different formats
+    #[test]
+    fn test_estimate_memory_usage() {
+        let file_size = 1024 * 1024; // 1MB
+
+        // Test PNG (highest memory factor)
+        let png_memory = estimate_memory_usage(file_size, &image::ImageFormat::Png);
+        assert_eq!(png_memory, 3.0); // 1MB * 3.0
+
+        // Test JPEG
+        let jpeg_memory = estimate_memory_usage(file_size, &image::ImageFormat::Jpeg);
+        assert_eq!(jpeg_memory, 2.5); // 1MB * 2.5
+
+        // Test BMP (lowest memory factor)
+        let bmp_memory = estimate_memory_usage(file_size, &image::ImageFormat::Bmp);
+        assert_eq!(bmp_memory, 1.2); // 1MB * 1.2
+    }
+
+    /// Test retry delay calculation
+    #[test]
+    fn test_calculate_retry_delay() {
+        let recovery = RecoveryConfig::default();
+
+        // First retry (attempt 1): base delay
+        let delay1 = calculate_retry_delay(1, &recovery);
+        assert!(delay1 >= recovery.base_retry_delay_ms);
+
+        // Second retry (attempt 2): exponential backoff
+        let delay2 = calculate_retry_delay(2, &recovery);
+        assert!(delay2 >= delay1);
+
+        // Test that delay doesn't exceed max (with reasonable bounds)
+        let delay_max_test = calculate_retry_delay(5, &recovery);
+        assert!(delay_max_test <= recovery.max_retry_delay_ms * 2); // Allow some margin for jitter
+    }
+
+    /// Test error type conversions
+    #[test]
+    fn test_error_conversions() {
+        // Test From<anyhow::Error>
+        let anyhow_error = anyhow::anyhow!("test error");
+        let ocr_error: OcrError = anyhow_error.into();
+        match ocr_error {
+            OcrError::ExtractionError(msg) => assert!(msg.contains("test error")),
+            _ => panic!("Expected ExtractionError"),
+        }
+
+        // Test Display implementation
+        let error = OcrError::ValidationError("test".to_string());
+        let display = format!("{}", error);
+        assert_eq!(display, "Validation error: test");
+    }
+
+    /// Test format detection with mock PNG file
+    #[test]
+    fn test_format_detection_png() {
+        let config = OcrConfig::default();
+
+        // Create mock PNG file (minimal PNG header)
+        let mut temp_file = NamedTempFile::new().unwrap();
+        // PNG signature: 89 50 4E 47 0D 0A 1A 0A
+        let png_header = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        temp_file.write_all(&png_header).unwrap();
+        temp_file.write_all(&[0u8; 24]).unwrap(); // Add some padding
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test format detection
+        let is_supported = is_supported_image_format(&temp_path, &config);
+        assert!(is_supported, "PNG should be supported");
+    }
+
+    /// Test format detection with mock JPEG file
+    #[test]
+    fn test_format_detection_jpeg() {
+        let config = OcrConfig::default();
+
+        // Create mock JPEG file (minimal JPEG header)
+        let mut temp_file = NamedTempFile::new().unwrap();
+        // JPEG SOI marker: FF D8
+        let jpeg_header = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46];
+        temp_file.write_all(&jpeg_header).unwrap();
+        temp_file.write_all(&[0u8; 24]).unwrap(); // Add some padding
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test format detection
+        let is_supported = is_supported_image_format(&temp_path, &config);
+        assert!(is_supported, "JPEG should be supported");
+    }
+
+    /// Test format detection with unsupported format
+    #[test]
+    fn test_format_detection_unsupported() {
+        let config = OcrConfig::default();
+
+        // Create mock file with unsupported format
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let unsupported_header = [0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00];
+        temp_file.write_all(&unsupported_header).unwrap();
+        temp_file.write_all(&[0u8; 24]).unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test format detection
+        let is_supported = is_supported_image_format(&temp_path, &config);
+        assert!(!is_supported, "Unsupported format should not be supported");
+    }
+
+    /// Test validation with oversized file
+    #[test]
+    fn test_validation_oversized_file() {
+        let mut config = OcrConfig::default();
+        config.max_file_size = 100; // Very small limit
+
+        // Create a file larger than the limit
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let large_content = vec![0u8; 200]; // 200 bytes
+        temp_file.write_all(&large_content).unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test validation
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("too large"));
+    }
+
+    /// Test validation with empty file
+    #[test]
+    fn test_validation_empty_file() {
+        let config = OcrConfig::default();
+
+        // Create empty file
+        let temp_file = NamedTempFile::new().unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test validation
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_err());
+        assert!(result.unwrap_err().to_string().contains("empty"));
+    }
+
+    /// Test instance manager with different languages
+    #[test]
+    fn test_instance_manager_multiple_languages() {
+        let manager = OcrInstanceManager::new();
+
+        // Create configs with different languages
+        let config_eng = OcrConfig {
+            languages: "eng".to_string(),
+            ..Default::default()
+        };
+        let config_fra = OcrConfig {
+            languages: "fra".to_string(),
+            ..Default::default()
+        };
+
+        // Get instances for different languages
+        let instance_eng1 = manager.get_instance(&config_eng).unwrap();
+        let instance_fra1 = manager.get_instance(&config_fra).unwrap();
+
+        assert_eq!(manager._instance_count(), 2);
+
+        // Get same instances again
+        let instance_eng2 = manager.get_instance(&config_eng).unwrap();
+        let instance_fra2 = manager.get_instance(&config_fra).unwrap();
+
+        // Verify they're the same instances
+        assert!(Arc::ptr_eq(&instance_eng1, &instance_eng2));
+        assert!(Arc::ptr_eq(&instance_fra1, &instance_fra2));
+
+        // But different language instances should be different
+        assert!(!Arc::ptr_eq(&instance_eng1, &instance_fra1));
+    }
+}
