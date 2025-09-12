@@ -5,8 +5,6 @@ use anyhow::Result;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
-use dotenv;
-use env_logger;
 
 mod db;
 mod bot;

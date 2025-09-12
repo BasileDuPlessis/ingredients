@@ -43,31 +43,31 @@ const MAX_FILE_SIZE: u64 = 10 * 1024 * 1024; // 10MB limit for image files
 #[derive(Debug, Clone)]
 pub enum OcrError {
     /// File validation errors
-    ValidationError(String),
+    Validation(String),
     /// OCR engine initialization errors
-    InitializationError(String),
+    Initialization(String),
     /// Image loading errors
-    ImageLoadError(String),
+    ImageLoad(String),
     /// Text extraction errors
-    ExtractionError(String),
+    Extraction(String),
     /// Instance corruption errors
-    _InstanceCorruptionError(String),
+    _InstanceCorruption(String),
     /// Timeout errors
-    TimeoutError(String),
+    Timeout(String),
     /// Resource exhaustion errors
-    _ResourceExhaustionError(String),
+    _ResourceExhaustion(String),
 }
 
 impl std::fmt::Display for OcrError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OcrError::ValidationError(msg) => write!(f, "Validation error: {}", msg),
-            OcrError::InitializationError(msg) => write!(f, "Initialization error: {}", msg),
-            OcrError::ImageLoadError(msg) => write!(f, "Image load error: {}", msg),
-            OcrError::ExtractionError(msg) => write!(f, "Extraction error: {}", msg),
-            OcrError::_InstanceCorruptionError(msg) => write!(f, "Instance corruption error: {}", msg),
-            OcrError::TimeoutError(msg) => write!(f, "Timeout error: {}", msg),
-            OcrError::_ResourceExhaustionError(msg) => write!(f, "Resource exhaustion error: {}", msg),
+            OcrError::Validation(msg) => write!(f, "Validation error: {}", msg),
+            OcrError::Initialization(msg) => write!(f, "Initialization error: {}", msg),
+            OcrError::ImageLoad(msg) => write!(f, "Image load error: {}", msg),
+            OcrError::Extraction(msg) => write!(f, "Extraction error: {}", msg),
+            OcrError::_InstanceCorruption(msg) => write!(f, "Instance corruption error: {}", msg),
+            OcrError::Timeout(msg) => write!(f, "Timeout error: {}", msg),
+            OcrError::_ResourceExhaustion(msg) => write!(f, "Resource exhaustion error: {}", msg),
         }
     }
 }
@@ -106,7 +106,7 @@ impl Default for RecoveryConfig {
 
 impl From<anyhow::Error> for OcrError {
     fn from(err: anyhow::Error) -> Self {
-        OcrError::ExtractionError(err.to_string())
+        OcrError::Extraction(err.to_string())
     }
 }
 
@@ -631,7 +631,7 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
             }
         }
         Err(e) => {
-            return Err(anyhow::anyhow!("Cannot open image file for validation: {} - {}", image_path, e));
+            Err(anyhow::anyhow!("Cannot open image file for validation: {} - {}", image_path, e))
         }
     }
 }
@@ -774,14 +774,14 @@ pub async fn extract_text_from_image(
     // Check circuit breaker before processing
     if circuit_breaker.is_open() {
         warn!("Circuit breaker is open, rejecting OCR request for image: {}", image_path);
-        return Err(OcrError::ExtractionError(
+        return Err(OcrError::Extraction(
             "OCR service is temporarily unavailable due to repeated failures. Please try again later.".to_string()
         ));
     }
 
     // Validate input with enhanced format-specific validation
     validate_image_with_format_limits(image_path, config)
-        .map_err(|e| OcrError::ValidationError(e.to_string()))?;
+        .map_err(|e| OcrError::Validation(e.to_string()))?;
 
     info!("Starting OCR text extraction from image: {}", image_path);
 
@@ -875,18 +875,18 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
     let result = tokio::time::timeout(timeout_duration, async {
         // Get or create OCR instance from the manager
         let instance = instance_manager.get_instance(config)
-            .map_err(|e| OcrError::InitializationError(e.to_string()))?;
+            .map_err(|e| OcrError::Initialization(e.to_string()))?;
 
         // Perform OCR processing with the reused instance
         let extracted_text = {
             let mut tess = instance.lock().unwrap();
             // Set the image for OCR processing
             tess.set_image(image_path)
-                .map_err(|e| OcrError::ImageLoadError(format!("Failed to load image for OCR: {}", e)))?;
+                .map_err(|e| OcrError::ImageLoad(format!("Failed to load image for OCR: {}", e)))?;
 
             // Extract text from the image
             tess.get_utf8_text()
-                .map_err(|e| OcrError::ExtractionError(format!("Failed to extract text from image: {}", e)))?
+                .map_err(|e| OcrError::Extraction(format!("Failed to extract text from image: {}", e)))?
         };
 
         // Clean up the extracted text (remove extra whitespace and empty lines)
@@ -916,7 +916,7 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
         Err(_) => {
             warn!("OCR processing timed out after {}ms (limit: {}s)",
                   ocr_ms, config.recovery.operation_timeout_secs);
-            Err(OcrError::TimeoutError(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))
+            Err(OcrError::Timeout(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))
         }
     }
 }
@@ -1033,7 +1033,7 @@ fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
 /// - No full file loading or OCR processing
 pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
     // Enhanced validation first (includes size checks)
-    if let Err(_) = validate_image_with_format_limits(file_path, config) {
+    if validate_image_with_format_limits(file_path, config).is_err() {
         return false;
     }
 
@@ -1264,12 +1264,12 @@ mod tests {
         let anyhow_error = anyhow::anyhow!("test error");
         let ocr_error: OcrError = anyhow_error.into();
         match ocr_error {
-            OcrError::ExtractionError(msg) => assert!(msg.contains("test error")),
-            _ => panic!("Expected ExtractionError"),
+            OcrError::Extraction(msg) => assert!(msg.contains("test error")),
+            _ => panic!("Expected Extraction"),
         }
 
         // Test Display implementation
-        let error = OcrError::ValidationError("test".to_string());
+        let error = OcrError::Validation("test".to_string());
         let display = format!("{}", error);
         assert_eq!(display, "Validation error: test");
     }
