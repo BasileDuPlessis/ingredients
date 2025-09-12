@@ -5,6 +5,7 @@ use anyhow::Result;
 use log::info;
 use std::sync::Arc;
 use tokio::sync::Mutex;
+use std::time::Duration;
 
 mod db;
 mod bot;
@@ -37,10 +38,15 @@ async fn main() -> Result<()> {
     // Wrap connection in Arc<Mutex> for sharing across async tasks
     let shared_conn = Arc::new(Mutex::new(conn));
 
-    // Initialize the bot
-    let bot = Bot::new(bot_token);
+    // Initialize the bot with custom client configuration for better reliability
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))  // 30 second timeout
+        .build()
+        .expect("Failed to create HTTP client");
 
-    info!("Bot initialized, starting dispatcher");
+    let bot = Bot::with_client(bot_token, client);
+
+    info!("Bot initialized with 30s timeout, starting dispatcher");
 
     // Set up the dispatcher with shared connection
     let handler = dptree::entry()
