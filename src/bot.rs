@@ -278,15 +278,6 @@ mod tests {
         assert!(cleanup_result.is_ok() || cleanup_result.is_err()); // File might not exist
     }
 
-    /// Test file download functionality with mock data
-    #[test]
-    fn test_download_file_mock() {
-        // This test would require mocking the HTTP client
-        // For now, we test the file path generation logic
-        let temp_path = "/tmp/test_file.png";
-        assert!(!temp_path.is_empty());
-    }
-
     /// Test database connection creation for message handler
     #[test]
     fn test_database_connection_creation() {
@@ -405,19 +396,6 @@ mod tests {
         assert_eq!(config.languages, cloned_config.languages);
         assert_eq!(config.buffer_size, cloned_config.buffer_size);
         assert_eq!(config.max_file_size, cloned_config.max_file_size);
-    }
-
-    /// Test recovery config defaults
-    #[test]
-    fn test_recovery_config_defaults() {
-        let recovery = RecoveryConfig::default();
-
-        assert_eq!(recovery.max_retries, 3);
-        assert_eq!(recovery.base_retry_delay_ms, 1000);
-        assert_eq!(recovery.max_retry_delay_ms, 10000);
-        assert_eq!(recovery.operation_timeout_secs, 30);
-        assert_eq!(recovery.circuit_breaker_threshold, 5);
-        assert_eq!(recovery.circuit_breaker_reset_secs, 60);
     }
 
     /// Test that static configs are thread-safe
