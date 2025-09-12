@@ -61,13 +61,13 @@ pub enum OcrError {
 impl std::fmt::Display for OcrError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            OcrError::Validation(msg) => write!(f, "Validation error: {}", msg),
-            OcrError::Initialization(msg) => write!(f, "Initialization error: {}", msg),
-            OcrError::ImageLoad(msg) => write!(f, "Image load error: {}", msg),
-            OcrError::Extraction(msg) => write!(f, "Extraction error: {}", msg),
-            OcrError::_InstanceCorruption(msg) => write!(f, "Instance corruption error: {}", msg),
-            OcrError::Timeout(msg) => write!(f, "Timeout error: {}", msg),
-            OcrError::_ResourceExhaustion(msg) => write!(f, "Resource exhaustion error: {}", msg),
+            OcrError::Validation(msg) => write!(f, "Validation error: {msg}"),
+            OcrError::Initialization(msg) => write!(f, "Initialization error: {msg}"),
+            OcrError::ImageLoad(msg) => write!(f, "Image load error: {msg}"),
+            OcrError::Extraction(msg) => write!(f, "Extraction error: {msg}"),
+            OcrError::_InstanceCorruption(msg) => write!(f, "Instance corruption error: {msg}"),
+            OcrError::Timeout(msg) => write!(f, "Timeout error: {msg}"),
+            OcrError::_ResourceExhaustion(msg) => write!(f, "Resource exhaustion error: {msg}"),
         }
     }
 }
@@ -177,11 +177,10 @@ impl CircuitBreaker {
                 let elapsed = last_time.elapsed();
                 if elapsed < Duration::from_secs(self.config.circuit_breaker_reset_secs) {
                     return true; // Circuit is still open
-                } else {
-                    // Reset circuit breaker
-                    *self.failure_count.lock().unwrap() = 0;
-                    *self.last_failure_time.lock().unwrap() = None;
                 }
+                // Reset circuit breaker
+                *self.failure_count.lock().unwrap() = 0;
+                *self.last_failure_time.lock().unwrap() = None;
             }
         }
         false
@@ -235,25 +234,25 @@ pub struct OcrConfig {
 #[derive(Debug, Clone)]
 pub struct FormatSizeLimits {
     /// PNG format limit (higher due to better compression)
-    pub png_max_size: u64,
+    pub png_max: u64,
     /// JPEG format limit (moderate due to lossy compression)
-    pub jpeg_max_size: u64,
+    pub jpeg_max: u64,
     /// BMP format limit (lower due to uncompressed nature)
-    pub bmp_max_size: u64,
+    pub bmp_max: u64,
     /// TIFF format limit (can be large, multi-page support)
-    pub tiff_max_size: u64,
+    pub tiff_max: u64,
     /// Minimum file size threshold for quick rejection
-    pub min_quick_reject_size: u64,
+    pub min_quick_reject: u64,
 }
 
 impl Default for FormatSizeLimits {
     fn default() -> Self {
         Self {
-            png_max_size: 15 * 1024 * 1024,    // 15MB for PNG
-            jpeg_max_size: 10 * 1024 * 1024,   // 10MB for JPEG
-            bmp_max_size: 5 * 1024 * 1024,     // 5MB for BMP
-            tiff_max_size: 20 * 1024 * 1024,   // 20MB for TIFF
-            min_quick_reject_size: 50 * 1024 * 1024, // 50MB quick reject
+            png_max: 15 * 1024 * 1024,    // 15MB for PNG
+            jpeg_max: 10 * 1024 * 1024,   // 10MB for JPEG
+            bmp_max: 5 * 1024 * 1024,     // 5MB for BMP
+            tiff_max: 20 * 1024 * 1024,   // 20MB for TIFF
+            min_quick_reject: 50 * 1024 * 1024, // 50MB quick reject
         }
     }
 }
@@ -371,7 +370,7 @@ impl OcrInstanceManager {
         }
 
         // Create new instance if none exists
-        info!("Creating new OCR instance for languages: {}", key);
+        info!("Creating new OCR instance for languages: {key}");
         let tess = LepTess::new(None, &key)
             .map_err(|e| anyhow::anyhow!("Failed to initialize Tesseract OCR instance: {}", e))?;
 
@@ -390,7 +389,7 @@ impl OcrInstanceManager {
     pub fn _remove_instance(&self, languages: &str) {
         let mut instances = self.instances.lock().unwrap();
         if instances.remove(languages).is_some() {
-            info!("Removed OCR instance for languages: {}", languages);
+            info!("Removed OCR instance for languages: {languages}");
         }
     }
 
@@ -400,7 +399,7 @@ impl OcrInstanceManager {
         let count = instances.len();
         instances.clear();
         if count > 0 {
-            info!("Cleared {} OCR instances", count);
+            info!("Cleared {count} OCR instances");
         }
     }
 
@@ -460,7 +459,7 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
         let ext_str = extension.to_string_lossy().to_lowercase();
         let valid_extensions = ["png", "jpg", "jpeg", "bmp", "tiff", "tif"];
         if !valid_extensions.contains(&ext_str.as_str()) {
-            info!("File extension '{}' may not be supported for OCR", ext_str);
+            info!("File extension '{ext_str}' may not be supported for OCR");
         }
     }
 
@@ -488,7 +487,7 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
 /// # Validation Steps
 ///
 /// 1. **Basic Validation**: File existence, readability, basic size limits
-/// 2. **Quick Rejection**: Immediate rejection of extremely large files (> min_quick_reject_size)
+/// 2. **Quick Rejection**: Immediate rejection of extremely large files (> `min_quick_reject`)
 /// 3. **Format Detection**: Read file header and detect image format
 /// 4. **Size Validation**: Check against format-specific size limits
 /// 5. **Memory Estimation**: Calculate expected memory usage
@@ -533,12 +532,11 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
     let file_size = path.metadata()?.len();
 
     // Quick rejection for extremely large files
-    if file_size > config.format_limits.min_quick_reject_size {
-        info!("Quick rejecting file {}: {} bytes exceeds quick reject threshold",
-              image_path, file_size);
+    if file_size > config.format_limits.min_quick_reject {
+        info!("Quick rejecting file {image_path}: {file_size} bytes exceeds quick reject threshold");
         return Err(anyhow::anyhow!(
             "File too large for processing: {} bytes (exceeds quick reject threshold of {} bytes)",
-            file_size, config.format_limits.min_quick_reject_size
+            file_size, config.format_limits.min_quick_reject
         ));
     }
 
@@ -557,27 +555,26 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                             let format_limit = match format {
                                 image::ImageFormat::Png => {
                                     info!("Detected PNG format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.png_max_size / (1024 * 1024));
-                                    config.format_limits.png_max_size
+                                          image_path, config.format_limits.png_max / (1024 * 1024));
+                                    config.format_limits.png_max
                                 }
                                 image::ImageFormat::Jpeg => {
                                     info!("Detected JPEG format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.jpeg_max_size / (1024 * 1024));
-                                    config.format_limits.jpeg_max_size
+                                          image_path, config.format_limits.jpeg_max / (1024 * 1024));
+                                    config.format_limits.jpeg_max
                                 }
                                 image::ImageFormat::Bmp => {
                                     info!("Detected BMP format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.bmp_max_size / (1024 * 1024));
-                                    config.format_limits.bmp_max_size
+                                          image_path, config.format_limits.bmp_max / (1024 * 1024));
+                                    config.format_limits.bmp_max
                                 }
                                 image::ImageFormat::Tiff => {
                                     info!("Detected TIFF format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.tiff_max_size / (1024 * 1024));
-                                    config.format_limits.tiff_max_size
+                                          image_path, config.format_limits.tiff_max / (1024 * 1024));
+                                    config.format_limits.tiff_max
                                 }
                                 _ => {
-                                    info!("Detected unsupported format {:?} for {}, using general limit",
-                                          format, image_path);
+                                    info!("Detected unsupported format {format:?} for {image_path}, using general limit");
                                     config.max_file_size
                                 }
                             };
@@ -591,7 +588,7 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
 
                             // Estimate memory usage for processing
                             let estimated_memory_mb = estimate_memory_usage(file_size, &format);
-                            info!("Estimated memory usage for {}: {}MB", image_path, estimated_memory_mb);
+                            info!("Estimated memory usage for {image_path}: {estimated_memory_mb}MB");
 
                             // Check if estimated memory usage exceeds safe limits
                             let max_memory_mb = 100.0; // 100MB memory limit for OCR processing
@@ -606,7 +603,7 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                         }
                         Err(_) => {
                             // Could not determine format, use general limit
-                            info!("Could not determine image format for {}, using general size limit", image_path);
+                            info!("Could not determine image format for {image_path}, using general size limit");
                             if file_size > config.max_file_size {
                                 return Err(anyhow::anyhow!(
                                     "Image file too large: {} bytes (maximum allowed: {} bytes)",
@@ -619,7 +616,7 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                 }
                 _ => {
                     // Could not read enough bytes, use general limit
-                    info!("Could not read enough bytes for format detection from {}, using general size limit", image_path);
+                    info!("Could not read enough bytes for format detection from {image_path}, using general size limit");
                     if file_size > config.max_file_size {
                         return Err(anyhow::anyhow!(
                             "Image file too large: {} bytes (maximum allowed: {} bytes)",
@@ -684,6 +681,9 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
 /// Estimates are conservative and may overestimate actual usage.
 /// Better to reject potentially problematic files than risk OOM errors.
 fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
+    // Convert file size to MB. Precision loss is acceptable for image files
+    // as they rarely exceed sizes where f64 precision becomes an issue.
+    #[allow(clippy::cast_precision_loss)]
     let file_size_mb = file_size as f64 / (1024.0 * 1024.0);
 
     // Memory estimation factors based on format characteristics
@@ -773,7 +773,7 @@ pub async fn extract_text_from_image(
 
     // Check circuit breaker before processing
     if circuit_breaker.is_open() {
-        warn!("Circuit breaker is open, rejecting OCR request for image: {}", image_path);
+        warn!("Circuit breaker is open, rejecting OCR request for image: {image_path}");
         return Err(OcrError::Extraction(
             "OCR service is temporarily unavailable due to repeated failures. Please try again later.".to_string()
         ));
@@ -783,7 +783,7 @@ pub async fn extract_text_from_image(
     validate_image_with_format_limits(image_path, config)
         .map_err(|e| OcrError::Validation(e.to_string()))?;
 
-    info!("Starting OCR text extraction from image: {}", image_path);
+    info!("Starting OCR text extraction from image: {image_path}");
 
     // Implement retry logic with exponential backoff
     let mut attempt = 0;
@@ -812,13 +812,12 @@ pub async fn extract_text_from_image(
                     // Record failure in circuit breaker
                     circuit_breaker.record_failure();
 
-                    error!("OCR extraction failed after {} attempts ({}ms total): {:?}",
-                           max_attempts, total_ms, err);
+                    error!("OCR extraction failed after {max_attempts} attempts ({total_ms}ms total): {err:?}");
                     return Err(err);
                 }
 
                 let delay_ms = calculate_retry_delay(attempt, &config.recovery);
-                warn!("OCR extraction attempt {} failed: {:?}. Retrying in {}ms", attempt, err, delay_ms);
+                warn!("OCR extraction attempt {attempt} failed: {err:?}. Retrying in {delay_ms}ms");
 
                 tokio::time::sleep(tokio::time::Duration::from_millis(delay_ms)).await;
             }
@@ -882,18 +881,18 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
             let mut tess = instance.lock().unwrap();
             // Set the image for OCR processing
             tess.set_image(image_path)
-                .map_err(|e| OcrError::ImageLoad(format!("Failed to load image for OCR: {}", e)))?;
+                .map_err(|e| OcrError::ImageLoad(format!("Failed to load image for OCR: {e}")))?;
 
             // Extract text from the image
             tess.get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("Failed to extract text from image: {}", e)))?
+                .map_err(|e| OcrError::Extraction(format!("Failed to extract text from image: {e}")))?
         };
 
         // Clean up the extracted text (remove extra whitespace and empty lines)
         let cleaned_text = extracted_text
             .trim()
             .lines()
-            .map(|line| line.trim())
+            .map(str::trim)
             .filter(|line| !line.is_empty())
             .collect::<Vec<&str>>()
             .join("\n");
@@ -910,7 +909,7 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
             Ok(text)
         }
         Ok(Err(e)) => {
-            warn!("OCR processing failed after {}ms: {:?}", ocr_ms, e);
+            warn!("OCR processing failed after {ocr_ms}ms: {e:?}");
             Err(e)
         }
         Err(_) => {
@@ -970,8 +969,15 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
 /// - **Configurable**: Adjustable for different environments
 /// - **Capped**: Prevents excessively long delays
 fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
+    // Calculate exponential backoff with minimal precision loss
+    // For retry delays, precision loss is acceptable as delays are typically small
+    #[allow(clippy::cast_precision_loss)]
     let base_delay = recovery.base_retry_delay_ms as f64;
+
+    #[allow(clippy::cast_precision_loss)]
     let exponential_delay = base_delay * (2.0_f64).powf((attempt - 1) as f64);
+
+    #[allow(clippy::cast_precision_loss)]
     let delay = exponential_delay.min(recovery.max_retry_delay_ms as f64) as u64;
 
     // Add some jitter to prevent thundering herd
@@ -979,7 +985,7 @@ fn calculate_retry_delay(attempt: u32, recovery: &RecoveryConfig) -> u64 {
     delay + jitter
 }
 
-/// Validate if an image file is supported for OCR processing using image::guess_format
+/// Validate if an image file is supported for OCR processing using `image::guess_format`
 ///
 /// Performs comprehensive validation including:
 /// 1. File existence and accessibility checks
@@ -1047,7 +1053,7 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
                     // Truncate buffer to actual bytes read
                     buffer.truncate(bytes_read);
 
-                    info!("Read {} bytes from file {} for format detection", bytes_read, file_path);
+                    info!("Read {bytes_read} bytes from file {file_path} for format detection");
 
                     match image::guess_format(&buffer) {
                         Ok(format) => {
@@ -1061,15 +1067,15 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
                             );
 
                             if supported {
-                                info!("Detected supported image format: {:?} for file: {}", format, file_path);
+                                info!("Detected supported image format: {format:?} for file: {file_path}");
                             } else {
-                                info!("Detected unsupported image format: {:?} for file: {}", format, file_path);
+                                info!("Detected unsupported image format: {format:?} for file: {file_path}");
                             }
 
                             supported
                         }
                         Err(e) => {
-                            info!("Could not determine image format for file: {} - {}", file_path, e);
+                            info!("Could not determine image format for file: {file_path} - {e}");
                             false
                         }
                     }
@@ -1079,13 +1085,13 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
                     false
                 }
                 Err(e) => {
-                    info!("Error reading image file for format detection: {} - {}", file_path, e);
+                    info!("Error reading image file for format detection: {file_path} - {e}");
                     false
                 }
             }
         }
         Err(e) => {
-            info!("Could not open image file for format detection: {} - {}", file_path, e);
+            info!("Could not open image file for format detection: {file_path} - {e}");
             false
         }
     }
@@ -1128,11 +1134,11 @@ mod tests {
     fn test_format_size_limits_defaults() {
         let limits = FormatSizeLimits::default();
 
-        assert_eq!(limits.png_max_size, 15 * 1024 * 1024);   // 15MB
-        assert_eq!(limits.jpeg_max_size, 10 * 1024 * 1024);  // 10MB
-        assert_eq!(limits.bmp_max_size, 5 * 1024 * 1024);    // 5MB
-        assert_eq!(limits.tiff_max_size, 20 * 1024 * 1024);  // 20MB
-        assert_eq!(limits.min_quick_reject_size, 50 * 1024 * 1024); // 50MB
+        assert_eq!(limits.png_max, 15 * 1024 * 1024);   // 15MB
+        assert_eq!(limits.jpeg_max, 10 * 1024 * 1024);  // 10MB
+        assert_eq!(limits.bmp_max, 5 * 1024 * 1024);    // 5MB
+        assert_eq!(limits.tiff_max, 20 * 1024 * 1024);  // 20MB
+        assert_eq!(limits.min_quick_reject, 50 * 1024 * 1024); // 50MB
     }
 
     /// Test circuit breaker state transitions

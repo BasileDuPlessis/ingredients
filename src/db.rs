@@ -4,7 +4,7 @@ use log::info;
 
 /// Represents an entry in the database
 #[derive(Debug, Clone, PartialEq)]
-pub struct Entry {
+pub struct _Entry {
     pub id: i64,
     pub telegram_id: i64,
     pub content: String,
@@ -67,8 +67,8 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
 
 
 /// Create a new entry in the database
-pub fn create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Result<i64> {
-    info!("Creating new entry for telegram_id: {}", telegram_id);
+pub fn _create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Result<i64> {
+    info!("Creating new entry for telegram_id: {telegram_id}");
 
     conn.execute(
         "INSERT INTO entries (telegram_id, content) VALUES (?1, ?2)",
@@ -76,21 +76,21 @@ pub fn create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Resul
     ).context("Failed to insert new entry")?;
 
     let entry_id = conn.last_insert_rowid();
-    info!("Entry created with ID: {}", entry_id);
+    info!("Entry created with ID: {entry_id}");
 
     Ok(entry_id)
 }
 
 /// Read an entry from the database by ID
-pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
-    info!("Reading entry with ID: {}", entry_id);
+pub fn _read_entry(conn: &Connection, entry_id: i64) -> Result<Option<_Entry>> {
+    info!("Reading entry with ID: {entry_id}");
 
     let mut stmt = conn.prepare(
         "SELECT id, telegram_id, content, created_at FROM entries WHERE id = ?1",
     ).context("Failed to prepare read statement")?;
 
     let entry = stmt.query_row(params![entry_id], |row| {
-        Ok(Entry {
+        Ok(_Entry {
             id: row.get(0)?,
             telegram_id: row.get(1)?,
             content: row.get(2)?,
@@ -100,11 +100,11 @@ pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
 
     match entry {
         Ok(entry) => {
-            info!("Entry found with ID: {}", entry_id);
+            info!("Entry found with ID: {entry_id}");
             Ok(Some(entry))
         }
         Err(rusqlite::Error::QueryReturnedNoRows) => {
-            info!("No entry found with ID: {}", entry_id);
+            info!("No entry found with ID: {entry_id}");
             Ok(None)
         }
         Err(e) => {
@@ -114,8 +114,8 @@ pub fn read_entry(conn: &Connection, entry_id: i64) -> Result<Option<Entry>> {
 }
 
 /// Update an existing entry in the database
-pub fn update_entry(conn: &Connection, entry_id: i64, new_content: &str) -> Result<bool> {
-    info!("Updating entry with ID: {}", entry_id);
+pub fn _update_entry(conn: &Connection, entry_id: i64, new_content: &str) -> Result<bool> {
+    info!("Updating entry with ID: {entry_id}");
 
     let rows_affected = conn.execute(
         "UPDATE entries SET content = ?1 WHERE id = ?2",
@@ -123,17 +123,17 @@ pub fn update_entry(conn: &Connection, entry_id: i64, new_content: &str) -> Resu
     ).context("Failed to update entry")?;
 
     if rows_affected > 0 {
-        info!("Entry updated successfully with ID: {}", entry_id);
+        info!("Entry updated successfully with ID: {entry_id}");
         Ok(true)
     } else {
-        info!("No entry found with ID: {}", entry_id);
+        info!("No entry found with ID: {entry_id}");
         Ok(false)
     }
 }
 
 /// Delete an entry from the database
-pub fn delete_entry(conn: &Connection, entry_id: i64) -> Result<bool> {
-    info!("Deleting entry with ID: {}", entry_id);
+pub fn _delete_entry(conn: &Connection, entry_id: i64) -> Result<bool> {
+    info!("Deleting entry with ID: {entry_id}");
 
     let rows_affected = conn.execute(
         "DELETE FROM entries WHERE id = ?1",
@@ -141,10 +141,10 @@ pub fn delete_entry(conn: &Connection, entry_id: i64) -> Result<bool> {
     ).context("Failed to delete entry")?;
 
     if rows_affected > 0 {
-        info!("Entry deleted successfully with ID: {}", entry_id);
+        info!("Entry deleted successfully with ID: {entry_id}");
         Ok(true)
     } else {
-        info!("No entry found with ID: {}", entry_id);
+        info!("No entry found with ID: {entry_id}");
         Ok(false)
     }
 }
@@ -168,7 +168,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "Test ingredient list content";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify the entry was created in entries table
         let mut stmt = conn.prepare("SELECT telegram_id, content FROM entries WHERE id = ?1")?;
@@ -194,7 +194,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify the entry was created
         let mut stmt = conn.prepare("SELECT telegram_id, content FROM entries WHERE id = ?1")?;
@@ -220,7 +220,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "!@#$%^&*()_+{}|:<>?[]\\;',./";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify the entry was created
         let mut stmt = conn.prepare("SELECT telegram_id, content FROM entries WHERE id = ?1")?;
@@ -252,7 +252,7 @@ mod tests {
         let mut entry_ids = Vec::new();
 
         for (telegram_id, content) in &entries {
-            let entry_id = create_entry(&conn, *telegram_id, content)?;
+            let entry_id = _create_entry(&conn, *telegram_id, content)?;
             entry_ids.push(entry_id);
         }
 
@@ -283,7 +283,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "Test content for FTS";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify the entry was synced to FTS table
         let mut stmt = conn.prepare("SELECT content FROM entries_fts WHERE rowid = ?1")?;
@@ -308,7 +308,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "Test content";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify the returned ID is greater than 0
         assert!(entry_id > 0);
@@ -331,10 +331,10 @@ mod tests {
 
         let telegram_id = 12345;
         let content = "Test content for reading";
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Read the entry back
-        let read_entry = read_entry(&conn, entry_id)?;
+        let read_entry = _read_entry(&conn, entry_id)?;
 
         assert!(read_entry.is_some());
         let entry = read_entry.unwrap();
@@ -352,7 +352,7 @@ mod tests {
         let entry_id = 99999; // Assuming this ID does not exist
 
         // Try to read a non-existing entry
-        let read_entry = read_entry(&conn, entry_id)?;
+        let read_entry = _read_entry(&conn, entry_id)?;
 
         assert!(read_entry.is_none());
 
@@ -366,9 +366,9 @@ mod tests {
         let telegram_id = 12345;
         let content = "Test ingredient list content";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
-        let entry = read_entry(&conn, entry_id)?;
+        let entry = _read_entry(&conn, entry_id)?;
 
         assert!(entry.is_some());
         let entry = entry.unwrap();
@@ -384,7 +384,7 @@ mod tests {
     fn test_read_entry_nonexistent() -> Result<()> {
         let (conn, _temp_file) = setup_test_db()?;
 
-        let entry = read_entry(&conn, 99999)?;
+        let entry = _read_entry(&conn, 99999)?;
 
         assert!(entry.is_none());
 
@@ -404,13 +404,13 @@ mod tests {
         let mut entry_ids = Vec::new();
 
         for (telegram_id, content) in &entries {
-            let entry_id = create_entry(&conn, *telegram_id, content)?;
+            let entry_id = _create_entry(&conn, *telegram_id, content)?;
             entry_ids.push(entry_id);
         }
 
         // Read each entry and verify
         for (i, expected_id) in entry_ids.iter().enumerate() {
-            let entry = read_entry(&conn, *expected_id)?;
+            let entry = _read_entry(&conn, *expected_id)?;
             assert!(entry.is_some());
             let entry = entry.unwrap();
             assert_eq!(entry.id, *expected_id);
@@ -428,9 +428,9 @@ mod tests {
         let telegram_id = 12345;
         let content = "Test content";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
-        let entry = read_entry(&conn, entry_id)?.unwrap();
+        let entry = _read_entry(&conn, entry_id)?.unwrap();
 
         // Verify created_at is a valid datetime string (basic check)
         assert!(entry.created_at.len() > 0);
@@ -446,15 +446,15 @@ mod tests {
 
         let telegram_id = 12345;
         let content = "Initial content";
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         let new_content = "Updated content";
-        let update_result = update_entry(&conn, entry_id, new_content)?;
+        let update_result = _update_entry(&conn, entry_id, new_content)?;
 
         assert!(update_result);
 
         // Verify the entry was updated
-        let updated_entry = read_entry(&conn, entry_id)?.unwrap();
+        let updated_entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(updated_entry.content, new_content);
 
         Ok(())
@@ -468,14 +468,14 @@ mod tests {
         let original_content = "Original ingredient list";
         let new_content = "Updated ingredient list";
 
-        let entry_id = create_entry(&conn, telegram_id, original_content)?;
+        let entry_id = _create_entry(&conn, telegram_id, original_content)?;
 
-        let update_result = update_entry(&conn, entry_id, new_content)?;
+        let update_result = _update_entry(&conn, entry_id, new_content)?;
 
         assert!(update_result);
 
         // Verify the entry was updated
-        let updated_entry = read_entry(&conn, entry_id)?.unwrap();
+        let updated_entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(updated_entry.id, entry_id);
         assert_eq!(updated_entry.telegram_id, telegram_id);
         assert_eq!(updated_entry.content, new_content);
@@ -487,7 +487,7 @@ mod tests {
     fn test_update_entry_nonexistent() -> Result<()> {
         let (conn, _temp_file) = setup_test_db()?;
 
-        let update_result = update_entry(&conn, 99999, "Some content")?;
+        let update_result = _update_entry(&conn, 99999, "Some content")?;
 
         assert!(!update_result);
 
@@ -502,14 +502,14 @@ mod tests {
         let original_content = "Original content";
         let new_content = "";
 
-        let entry_id = create_entry(&conn, telegram_id, original_content)?;
+        let entry_id = _create_entry(&conn, telegram_id, original_content)?;
 
-        let update_result = update_entry(&conn, entry_id, new_content)?;
+        let update_result = _update_entry(&conn, entry_id, new_content)?;
 
         assert!(update_result);
 
         // Verify the entry was updated to empty content
-        let updated_entry = read_entry(&conn, entry_id)?.unwrap();
+        let updated_entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(updated_entry.content, new_content);
 
         Ok(())
@@ -523,14 +523,14 @@ mod tests {
         let original_content = "Original content";
         let new_content = "!@#$%^&*()_+{}|:<>?[]\\;',./";
 
-        let entry_id = create_entry(&conn, telegram_id, original_content)?;
+        let entry_id = _create_entry(&conn, telegram_id, original_content)?;
 
-        let update_result = update_entry(&conn, entry_id, new_content)?;
+        let update_result = _update_entry(&conn, entry_id, new_content)?;
 
         assert!(update_result);
 
         // Verify the entry was updated with special characters
-        let updated_entry = read_entry(&conn, entry_id)?.unwrap();
+        let updated_entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(updated_entry.content, new_content);
 
         Ok(())
@@ -544,9 +544,9 @@ mod tests {
         let original_content = "Original content for FTS";
         let new_content = "Updated content for FTS";
 
-        let entry_id = create_entry(&conn, telegram_id, original_content)?;
+        let entry_id = _create_entry(&conn, telegram_id, original_content)?;
 
-        let update_result = update_entry(&conn, entry_id, new_content)?;
+        let update_result = _update_entry(&conn, entry_id, new_content)?;
 
         assert!(update_result);
 
@@ -568,20 +568,20 @@ mod tests {
         let content2 = "Second version";
         let content3 = "Third version";
 
-        let entry_id = create_entry(&conn, telegram_id, content1)?;
+        let entry_id = _create_entry(&conn, telegram_id, content1)?;
 
         // First update
-        let update_result1 = update_entry(&conn, entry_id, content2)?;
+        let update_result1 = _update_entry(&conn, entry_id, content2)?;
         assert!(update_result1);
 
-        let entry = read_entry(&conn, entry_id)?.unwrap();
+        let entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(entry.content, content2);
 
         // Second update
-        let update_result2 = update_entry(&conn, entry_id, content3)?;
+        let update_result2 = _update_entry(&conn, entry_id, content3)?;
         assert!(update_result2);
 
-        let entry = read_entry(&conn, entry_id)?.unwrap();
+        let entry = _read_entry(&conn, entry_id)?.unwrap();
         assert_eq!(entry.content, content3);
 
         Ok(())
@@ -593,14 +593,14 @@ mod tests {
 
         let telegram_id = 12345;
         let content = "Content to be deleted";
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
-        let delete_result = delete_entry(&conn, entry_id)?;
+        let delete_result = _delete_entry(&conn, entry_id)?;
 
         assert!(delete_result);
 
         // Verify the entry was deleted
-        let read_entry = read_entry(&conn, entry_id)?;
+        let read_entry = _read_entry(&conn, entry_id)?;
         assert!(read_entry.is_none());
 
         Ok(())
@@ -613,19 +613,19 @@ mod tests {
         let telegram_id = 12345;
         let content = "Content to be deleted";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify entry exists before deletion
-        let entry_before = read_entry(&conn, entry_id)?;
+        let entry_before = _read_entry(&conn, entry_id)?;
         assert!(entry_before.is_some());
 
         // Delete the entry
-        let delete_result = delete_entry(&conn, entry_id)?;
+        let delete_result = _delete_entry(&conn, entry_id)?;
 
         assert!(delete_result);
 
         // Verify entry no longer exists
-        let entry_after = read_entry(&conn, entry_id)?;
+        let entry_after = _read_entry(&conn, entry_id)?;
         assert!(entry_after.is_none());
 
         Ok(())
@@ -635,7 +635,7 @@ mod tests {
     fn test_delete_entry_nonexistent() -> Result<()> {
         let (conn, _temp_file) = setup_test_db()?;
 
-        let delete_result = delete_entry(&conn, 99999)?;
+        let delete_result = _delete_entry(&conn, 99999)?;
 
         assert!(!delete_result);
 
@@ -649,7 +649,7 @@ mod tests {
         let telegram_id = 12345;
         let content = "Content for deletion sync test";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // Verify FTS entry exists before deletion
         let mut stmt = conn.prepare("SELECT content FROM entries_fts WHERE rowid = ?1")?;
@@ -657,7 +657,7 @@ mod tests {
         assert!(fts_result_before.is_ok());
 
         // Delete the entry
-        let delete_result = delete_entry(&conn, entry_id)?;
+        let delete_result = _delete_entry(&conn, entry_id)?;
 
         assert!(delete_result);
 
@@ -684,17 +684,17 @@ mod tests {
 
         // Create multiple entries
         for (telegram_id, content) in &entries {
-            let entry_id = create_entry(&conn, *telegram_id, content)?;
+            let entry_id = _create_entry(&conn, *telegram_id, content)?;
             entry_ids.push(entry_id);
         }
 
         // Delete each entry and verify
         for entry_id in entry_ids {
-            let delete_result = delete_entry(&conn, entry_id)?;
+            let delete_result = _delete_entry(&conn, entry_id)?;
             assert!(delete_result);
 
             // Verify entry no longer exists
-            let entry = read_entry(&conn, entry_id)?;
+            let entry = _read_entry(&conn, entry_id)?;
             assert!(entry.is_none());
         }
 
@@ -708,14 +708,14 @@ mod tests {
         let telegram_id = 12345;
         let content = "Content for double deletion test";
 
-        let entry_id = create_entry(&conn, telegram_id, content)?;
+        let entry_id = _create_entry(&conn, telegram_id, content)?;
 
         // First deletion should succeed
-        let delete_result1 = delete_entry(&conn, entry_id)?;
+        let delete_result1 = _delete_entry(&conn, entry_id)?;
         assert!(delete_result1);
 
         // Second deletion should fail
-        let delete_result2 = delete_entry(&conn, entry_id)?;
+        let delete_result2 = _delete_entry(&conn, entry_id)?;
         assert!(!delete_result2);
 
         Ok(())

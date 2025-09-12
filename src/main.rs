@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     // Get database path from environment
     let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
-    info!("Initializing database at: {}", database_url);
+    info!("Initializing database at: {database_url}");
 
     // Create database connection
     let conn = Connection::open(&database_url)?;
