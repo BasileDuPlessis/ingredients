@@ -10,11 +10,15 @@ use std::time::Duration;
 mod db;
 mod bot;
 mod ocr;
+mod localization;
 
 #[tokio::main]
 async fn main() -> Result<()> {
     // Initialize logging
     env_logger::init();
+
+    // Initialize localization
+    localization::init_localization()?;
 
     info!("Starting Ingredients Telegram Bot");
 

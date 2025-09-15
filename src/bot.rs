@@ -8,6 +8,9 @@ use rusqlite::Connection;
 use anyhow::Result;
 use log::{info, error};
 
+// Import localization
+use crate::localization::{t, t_args};
+
 // Create OCR configuration with default settings
 static OCR_CONFIG: LazyLock<crate::ocr::OcrConfig> = LazyLock::new(crate::ocr::OcrConfig::default);
 static OCR_INSTANCE_MANAGER: LazyLock<crate::ocr::OcrInstanceManager> = LazyLock::new(crate::ocr::OcrInstanceManager::default);
@@ -38,16 +41,14 @@ async fn download_and_process_image(
     chat_id: ChatId,
     success_message: &str,
 ) -> Result<String> {
-    let temp_path = match download_file(bot, file_id).await {
-        Ok(path) => path,
-        Err(e) => {
-            error!("Failed to download image for user {chat_id}: {e:?}");
-            bot.send_message(chat_id, "❌ Failed to download the image. Please try again.").await?;
-            return Err(e);
-        }
-    };
-
-    // Ensure cleanup happens even if we return early
+        let temp_path = match download_file(bot, file_id).await {
+            Ok(path) => path,
+            Err(e) => {
+                error!("Failed to download image for user {chat_id}: {e:?}");
+                bot.send_message(chat_id, t("error-download-failed")).await?;
+                return Err(e);
+            }
+        };    // Ensure cleanup happens even if we return early
     let result = async {
         info!("Image downloaded to: {temp_path}");
 
@@ -57,7 +58,7 @@ async fn download_and_process_image(
         // Validate image format before OCR processing
         if !crate::ocr::is_supported_image_format(&temp_path, &OCR_CONFIG) {
             info!("Unsupported image format for user {chat_id}");
-            bot.send_message(chat_id, "❌ Unsupported image format. Please use PNG, JPG, JPEG, BMP, TIFF, or TIF formats.").await?;
+            bot.send_message(chat_id, t("error-unsupported-format")).await?;
             return Ok(String::new());
         }
 
@@ -66,14 +67,17 @@ async fn download_and_process_image(
             Ok(extracted_text) => {
                 if extracted_text.is_empty() {
                     info!("No text found in image from user {chat_id}");
-                    bot.send_message(chat_id, "⚠️ No text was found in the image. Please try a clearer image with visible text.").await?;
+                    bot.send_message(chat_id, t("error-no-text-found")).await?;
                     Ok(String::new())
                 } else {
                     info!("Successfully extracted {} characters of text from user {}", extracted_text.len(), chat_id);
 
                     // Send the extracted text back to the user
                     let response_message = format!(
-                        "✅ **Text extracted successfully!**\n\n📝 **Extracted Text:**\n```\n{extracted_text}\n```"
+                        "{}\n\n{}```\n{}\n```",
+                        t("success-extraction"),
+                        t("success-extracted-text"),
+                        extracted_text
                     );
                     bot.send_message(chat_id, &response_message).await?;
 
@@ -86,25 +90,25 @@ async fn download_and_process_image(
                 // Provide more specific error messages based on the error type
                 let error_message = match &e {
                     crate::ocr::OcrError::Validation(msg) => {
-                        format!("❌ Image validation failed: {msg}")
+                        t_args("error-validation", &[("msg", msg)])
                     }
                     crate::ocr::OcrError::ImageLoad(_) => {
-                        "❌ The image format is not supported or the image is corrupted. Please try with a PNG, JPG, or BMP image.".to_string()
+                        t("error-image-load")
                     }
                     crate::ocr::OcrError::Initialization(_) => {
-                        "❌ OCR engine initialization failed. Please try again later.".to_string()
+                        t("error-ocr-initialization")
                     }
                     crate::ocr::OcrError::Extraction(_) => {
-                        "❌ Failed to extract text from the image. Please try again with a different image.".to_string()
+                        t("error-ocr-extraction")
                     }
                     crate::ocr::OcrError::Timeout(msg) => {
-                        format!("❌ OCR processing timed out: {msg}")
+                        t_args("error-ocr-timeout", &[("msg", msg)])
                     }
                     crate::ocr::OcrError::_InstanceCorruption(_) => {
-                        "❌ OCR engine encountered an internal error. Please try again.".to_string()
+                        t("error-ocr-corruption")
                     }
                     crate::ocr::OcrError::_ResourceExhaustion(_) => {
-                        "❌ System resources are exhausted. Please try again later.".to_string()
+                        t("error-ocr-exhaustion")
                     }
                 };
 
@@ -131,59 +135,55 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
         // Handle /start command
         if text == "/start" {
             let welcome_message = format!(
-                "👋 **Welcome to Ingredients Bot!**\n\n\
-                I'm your OCR assistant that can extract text from images. Here's what I can do:\n\n\
-                📸 **Send me photos** of ingredient lists, recipes, or any text you want to extract\n\
-                📄 **Send me image files** (PNG, JPG, JPEG, BMP, TIFF, TIF)\n\
-                🔍 **I'll process them with OCR** and send back the extracted text\n\
-                💾 **All extracted text is stored** for future reference\n\n\
-                **Commands:**\n\
-                /start - Show this welcome message\n\
-                /help - Get help and usage instructions\n\n\
-                Just send me an image and I'll do the rest! 🚀"
+                "👋 **{}**\n\n{}\n\n{}\n\n{}\n{}\n{}\n\n{}",
+                t("welcome-title"),
+                t("welcome-description"),
+                t("welcome-features"),
+                t("welcome-commands"),
+                t("welcome-start"),
+                t("welcome-help"),
+                t("welcome-send-image")
             );
             bot.send_message(msg.chat.id, welcome_message).await?;
         }
         // Handle /help command
         else if text == "/help" {
-            let help_message = format!(
-                "🆘 **Ingredients Bot Help**\n\n\
-                **How to use me:**\n\
-                1. 📸 Send a photo of text you want to extract\n\
-                2. 📎 Or send an image file (PNG, JPG, JPEG, BMP, TIFF, TIF)\n\
-                3. ⏳ I'll process it with OCR technology\n\
-                4. 📝 You'll receive the extracted text\n\n\
-                **Supported formats:** PNG, JPG, JPEG, BMP, TIFF, TIF\n\
-                **File size limit:** 10MB for JPEG, 5MB for other formats\n\n\
-                **Commands:**\n\
-                /start - Welcome message\n\
-                /help - This help message\n\n\
-                **Tips:**\n\
-                • Use clear, well-lit images\n\
-                • Ensure text is readable and not too small\n\
-                • Avoid blurry or distorted images\n\
-                • Supported languages: English + French\n\n\
-                Need help? Just send me an image! 😊"
-            );
+            let help_message = vec![
+                t("help-title"),
+                t("help-description"),
+                t("help-step1"),
+                t("help-step2"),
+                t("help-step3"),
+                t("help-step4"),
+                t("help-formats"),
+                t("help-commands"),
+                t("help-start"),
+                t("help-tips"),
+                t("help-tip1"),
+                t("help-tip2"),
+                t("help-tip3"),
+                t("help-tip4"),
+                t("help-final")
+            ].join("\n\n");
             bot.send_message(msg.chat.id, help_message).await?;
         }
         // Handle regular text messages
         else {
-            bot.send_message(msg.chat.id, format!("Received: {text}\n\n💡 Tip: Send me an image with text to extract it using OCR!")).await?;
+            bot.send_message(msg.chat.id, format!("{} {}", t_args("text-response", &[("text", text)]), t("text-tip"))).await?;
         }
     }
     Ok(())
 }
 
 async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
-    info!("Received photo from user {}", msg.chat.id);
+    info!("{}", t_args("photo-received", &[("user_id", &msg.chat.id.to_string())]));
     if let Some(photos) = msg.photo() {
         if let Some(largest_photo) = photos.last() {
             let _temp_path = download_and_process_image(
                 bot,
                 largest_photo.file.id.clone(),
                 msg.chat.id,
-                "Photo downloaded successfully! Processing...",
+                &t("processing-photo"),
             ).await;
         }
     }
@@ -194,19 +194,19 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
     if let Some(doc) = msg.document() {
         if let Some(mime_type) = &doc.mime_type {
             if mime_type.to_string().starts_with("image/") {
-                info!("Received image document from user {}", msg.chat.id);
+                info!("{}", t_args("document-image", &[("user_id", &msg.chat.id.to_string())]));
                 let _temp_path = download_and_process_image(
                     bot,
                     doc.file.id.clone(),
                     msg.chat.id,
-                    "Image document downloaded successfully! Processing...",
+                    &t("processing-document"),
                 ).await;
             } else {
-                info!("Received non-image document from user {}", msg.chat.id);
+                info!("{}", t_args("document-non-image", &[("user_id", &msg.chat.id.to_string())]));
                 bot.send_message(msg.chat.id, "Received a document, but it's not an image.").await?;
             }
         } else {
-            info!("Received document without MIME type from user {}", msg.chat.id);
+            info!("{}", t_args("document-no-mime", &[("user_id", &msg.chat.id.to_string())]));
             bot.send_message(msg.chat.id, "Received a document. Unable to determine if it's an image.").await?;
         }
     }
@@ -214,15 +214,16 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
 }
 
 async fn handle_unsupported_message(bot: &Bot, msg: &Message) -> Result<()> {
-    info!("Received unsupported message type from user {}", msg.chat.id);
+    info!("{}", t_args("unsupported-received", &[("user_id", &msg.chat.id.to_string())]));
     let help_message = format!(
-        "🤔 I can only process text messages and images.\n\n\
-        **What I can do:**\n\
-        📸 Send photos of text you want to extract\n\
-        📄 Send image files (PNG, JPG, JPEG, BMP, TIFF, TIF)\n\
-        💬 Send /start to see the welcome message\n\
-        ❓ Send /help for detailed instructions\n\n\
-        Try sending me an image with text! 📝"
+        "{}\n\n{}\n{}\n{}\n{}\n{}\n\n{}",
+        t("unsupported-title"),
+        t("unsupported-description"),
+        t("unsupported-feature1"),
+        t("unsupported-feature2"),
+        t("unsupported-feature3"),
+        t("unsupported-feature4"),
+        t("unsupported-final")
     );
     bot.send_message(msg.chat.id, help_message).await?;
     Ok(())
