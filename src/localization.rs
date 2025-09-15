@@ -15,10 +15,14 @@ impl LocalizationManager {
     pub fn new() -> Result<Self> {
         let mut bundles = HashMap::new();
 
-        // Load English bundle
-        let en_locale: LanguageIdentifier = "en".parse()?;
-        let bundle = Self::create_bundle(&en_locale)?;
-        bundles.insert("en".to_string(), Arc::new(bundle));
+        // Load available locales
+        let locales = vec!["en", "fr"];
+
+        for locale_str in locales {
+            let locale: LanguageIdentifier = locale_str.parse()?;
+            let bundle = Self::create_bundle(&locale)?;
+            bundles.insert(locale_str.to_string(), Arc::new(bundle));
+        }
 
         Ok(Self { bundles })
     }
@@ -38,9 +42,23 @@ impl LocalizationManager {
         Ok(bundle)
     }
 
-    /// Get a localized message
+    /// Get a localized message in the specified language
     pub fn get_message(&self, key: &str, args: Option<&HashMap<&str, &str>>) -> String {
-        let bundle = self.bundles.get("en").unwrap();
+        self.get_message_in_language(key, "en", args)
+    }
+
+    /// Get a localized message in a specific language
+    pub fn get_message_in_language(&self, key: &str, language: &str, args: Option<&HashMap<&str, &str>>) -> String {
+        let bundle = match self.bundles.get(language) {
+            Some(bundle) => bundle,
+            None => {
+                // Fallback to English if language not found
+                match self.bundles.get("en") {
+                    Some(bundle) => bundle,
+                    None => return format!("Missing translation: {}", key),
+                }
+            }
+        };
 
         let msg = match bundle.get_message(key) {
             Some(msg) => msg,
@@ -67,10 +85,25 @@ impl LocalizationManager {
         value
     }
 
-    /// Get a localized message with simple string arguments
+    /// Get a localized message with arguments
     pub fn get_message_with_args(&self, key: &str, args: &[(&str, &str)]) -> String {
+        self.get_message_with_args_in_language(key, "en", args)
+    }
+
+    /// Get a localized message with arguments in a specific language
+    pub fn get_message_with_args_in_language(&self, key: &str, language: &str, args: &[(&str, &str)]) -> String {
         let args_map: HashMap<&str, &str> = args.iter().cloned().collect();
-        self.get_message(key, Some(&args_map))
+        self.get_message_in_language(key, language, Some(&args_map))
+    }
+
+    /// Check if a language is supported
+    pub fn is_language_supported(&self, language: &str) -> bool {
+        self.bundles.contains_key(language)
+    }
+
+    /// Get list of supported languages
+    pub fn get_supported_languages(&self) -> Vec<String> {
+        self.bundles.keys().cloned().collect()
     }
 }
 
@@ -87,6 +120,7 @@ pub fn init_localization() -> Result<()> {
 }
 
 /// Get the global localization manager
+#[allow(static_mut_refs)]
 pub fn get_localization_manager() -> &'static LocalizationManager {
     unsafe {
         LOCALIZATION_MANAGER.as_ref().expect("Localization manager not initialized")
@@ -101,4 +135,36 @@ pub fn t(key: &str) -> String {
 /// Convenience function to get a localized message with arguments
 pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
     get_localization_manager().get_message_with_args(key, args)
+}
+
+/// Convenience function to get a localized message in user's language
+pub fn t_lang(key: &str, language_code: Option<&str>) -> String {
+    let language = detect_language(language_code);
+    get_localization_manager().get_message_in_language(key, &language, None)
+}
+
+/// Convenience function to get a localized message with arguments in user's language
+pub fn t_args_lang(key: &str, args: &[(&str, &str)], language_code: Option<&str>) -> String {
+    let language = detect_language(language_code);
+    get_localization_manager().get_message_with_args_in_language(key, &language, args)
+}
+
+/// Detect the appropriate language based on user's Telegram language code
+pub fn detect_language(language_code: Option<&str>) -> String {
+    if let Some(code) = language_code {
+        // Extract language code (e.g., "fr-FR" -> "fr", "en-US" -> "en")
+        let lang = if code.contains('-') {
+            code.split('-').next().unwrap_or("en")
+        } else {
+            code
+        };
+
+        // Check if we support this language
+        if get_localization_manager().is_language_supported(lang) {
+            return lang.to_string();
+        }
+    }
+
+    // Default to English if language not supported or not provided
+    "en".to_string()
 }
