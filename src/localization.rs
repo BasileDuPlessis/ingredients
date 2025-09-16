@@ -1,13 +1,13 @@
 use fluent_bundle::{FluentBundle, FluentResource};
 use unic_langid::LanguageIdentifier;
-use std::sync::Arc;
+use std::rc::Rc;
 use std::collections::HashMap;
 use std::fs;
 use anyhow::Result;
 
 /// Localization manager for the Ingredients Bot
 pub struct LocalizationManager {
-    bundles: HashMap<String, Arc<FluentBundle<FluentResource>>>,
+    bundles: HashMap<String, Rc<FluentBundle<FluentResource>>>,
 }
 
 impl LocalizationManager {
@@ -21,7 +21,7 @@ impl LocalizationManager {
         for locale_str in locales {
             let locale: LanguageIdentifier = locale_str.parse()?;
             let bundle = Self::create_bundle(&locale)?;
-            bundles.insert(locale_str.to_string(), Arc::new(bundle));
+            bundles.insert(locale_str.to_string(), Rc::new(bundle));
         }
 
         Ok(Self { bundles })
@@ -40,11 +40,6 @@ impl LocalizationManager {
         }
 
         Ok(bundle)
-    }
-
-    /// Get a localized message in the specified language
-    pub fn get_message(&self, key: &str, args: Option<&HashMap<&str, &str>>) -> String {
-        self.get_message_in_language(key, "en", args)
     }
 
     /// Get a localized message in a specific language
@@ -85,11 +80,6 @@ impl LocalizationManager {
         value
     }
 
-    /// Get a localized message with arguments
-    pub fn get_message_with_args(&self, key: &str, args: &[(&str, &str)]) -> String {
-        self.get_message_with_args_in_language(key, "en", args)
-    }
-
     /// Get a localized message with arguments in a specific language
     pub fn get_message_with_args_in_language(&self, key: &str, language: &str, args: &[(&str, &str)]) -> String {
         let args_map: HashMap<&str, &str> = args.iter().cloned().collect();
@@ -99,11 +89,6 @@ impl LocalizationManager {
     /// Check if a language is supported
     pub fn is_language_supported(&self, language: &str) -> bool {
         self.bundles.contains_key(language)
-    }
-
-    /// Get list of supported languages
-    pub fn get_supported_languages(&self) -> Vec<String> {
-        self.bundles.keys().cloned().collect()
     }
 }
 
@@ -125,16 +110,6 @@ pub fn get_localization_manager() -> &'static LocalizationManager {
     unsafe {
         LOCALIZATION_MANAGER.as_ref().expect("Localization manager not initialized")
     }
-}
-
-/// Convenience function to get a localized message
-pub fn t(key: &str) -> String {
-    get_localization_manager().get_message(key, None)
-}
-
-/// Convenience function to get a localized message with arguments
-pub fn t_args(key: &str, args: &[(&str, &str)]) -> String {
-    get_localization_manager().get_message_with_args(key, args)
 }
 
 /// Convenience function to get a localized message in user's language

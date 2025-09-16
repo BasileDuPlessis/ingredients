@@ -596,12 +596,6 @@ mod tests {
         // Test fallback to English for unsupported language
         let fallback = manager.get_message_in_language("welcome-title", "de", None);
         assert_eq!(fallback, welcome_title_en, "Unsupported language should fallback to English");
-
-        // Test supported languages list
-        let languages = manager.get_supported_languages();
-        assert!(languages.contains(&"en".to_string()), "Supported languages should include English");
-        assert!(languages.contains(&"fr".to_string()), "Supported languages should include French");
-        assert_eq!(languages.len(), 2, "Should support exactly 2 languages");
     }
 
     /// Test language detection functionality
