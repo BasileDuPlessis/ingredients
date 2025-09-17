@@ -53,6 +53,38 @@ pub enum Unit {
 }
 ```
 
+## Quick Start
+
+### Basic Usage
+
+```rust
+use crate::ingredient_parser::parse_ingredient_line;
+
+// Parse a simple ingredient line
+let result = parse_ingredient_line("2 cups all-purpose flour")?;
+println!("Quantity: {:?}", result.quantity);     // Some(Exact(2.0))
+println!("Unit: {:?}", result.unit);             // Some(Volume(Cup))
+println!("Ingredient: {}", result.ingredient_name); // "all-purpose flour"
+println!("Confidence: {:.2}", result.confidence);   // 0.90
+```
+
+### Working with Quantities
+
+```rust
+// Convert to decimal for calculations
+if let Some(decimal_value) = result.quantity.and_then(|q| q.to_decimal()) {
+    println!("Decimal equivalent: {}", decimal_value);
+}
+
+// Get value range for ranges and approximations
+if let Some((min, max)) = result.quantity.and_then(|q| q.value_range()) {
+    println!("Value range: {} to {}", min, max);
+}
+
+// Display formatted quantity
+println!("Formatted: {}", result.quantity.unwrap());
+```
+
 ## Supported Formats
 
 ### Quantity Formats
@@ -119,6 +151,18 @@ pub enum Unit {
 
 ### Edge Cases
 
+#### Mixed Number Fractions
+```rust
+"2 1/4 cups all-purpose flour"
+→ ParsedIngredientEntry {
+    quantity: Some(Fraction { whole: Some(2), numerator: 1, denominator: 4 }),
+    unit: Some(Volume(Cup)),
+    ingredient_name: "all-purpose flour",
+    confidence: 0.9
+}
+// Decimal equivalent: 2.25
+```
+
 #### Ranges
 ```rust
 // Hyphen range
@@ -130,7 +174,7 @@ pub enum Unit {
     confidence: 0.9
 }
 
-// Word range
+// Word range (future enhancement)
 "1 to 2 pounds chicken breast"
 → ParsedIngredientEntry {
     quantity: Some(Range { min: 1.0, max: 2.0 }),
@@ -232,20 +276,55 @@ Factors affecting confidence:
 - Clear ingredient name identification
 - Absence of ambiguity
 
-## Usage Examples
+## Advanced Features
 
-### Basic Parsing
+### Quantity Calculations
 ```rust
-use crate::ingredient_parser::parse_ingredient_line;
+// Convert any quantity to decimal for calculations
+let decimal = quantity.to_decimal(); // Option<f64>
 
-let result = parse_ingredient_line("2 cups all-purpose flour")?;
-println!("Quantity: {:?}", result.quantity);
-println!("Unit: {:?}", result.unit);
-println!("Ingredient: {}", result.ingredient_name);
-println!("Confidence: {:.2}", result.confidence);
+// Get value range (useful for ranges and approximations)
+let (min, max) = quantity.value_range().unwrap(); // (f64, f64)
+
+// Display formatted quantity
+println!("{}", quantity); // "2 1/4", "2-3", "about 1.5", etc.
 ```
 
-### Batch Processing
+### Unit Operations
+```rust
+// Check unit compatibility for conversions
+let cup = Unit::Volume(VolumeUnit::Cup);
+let tsp = Unit::Volume(VolumeUnit::Teaspoon);
+assert!(cup.is_compatible(&tsp)); // true - both volume
+
+// Get unit aliases for parsing
+let aliases = cup.aliases(); // ["c", "cups"]
+
+// Get base unit for conversions
+let base = cup.base_unit(); // Volume(Milliliter)
+```
+
+### Entry Validation
+```rust
+// Check if parsed entry is valid
+if entry.is_valid() {
+    println!("Successfully parsed: {}", entry.normalized_string());
+}
+
+// Get normalized representation
+let normalized = entry.normalized_string(); // "2 cup flour"
+```
+
+## Integration with Existing System
+
+The ingredient parser integrates with the existing OCR and database system:
+
+1. **OCR Output**: Raw text from image processing
+2. **Line-by-Line Parsing**: Each line processed through `parse_ingredient_line()`
+3. **Structured Storage**: Parsed entries stored alongside original text
+4. **Enhanced Search**: Search by ingredient name, quantity ranges, or units
+
+### Batch Processing Example
 ```rust
 let ingredient_lines = vec![
     "2 cups flour",
@@ -257,20 +336,12 @@ let ingredient_lines = vec![
 
 for line in ingredient_lines {
     match parse_ingredient_line(line) {
-        Ok(entry) => println!("✓ {}: {}", line, entry.normalized_string()),
+        Ok(entry) => {
+            println!("✓ {}: {} (confidence: {:.2})", 
+                line, entry.normalized_string(), entry.confidence);
+        }
         Err(e) => println!("✗ {}: {}", line, e),
     }
-}
-```
-
-### Quantity Calculations
-```rust
-if let Some(decimal_value) = result.quantity.and_then(|q| q.to_decimal()) {
-    println!("Decimal equivalent: {}", decimal_value);
-}
-
-if let Some((min, max)) = result.quantity.and_then(|q| q.value_range()) {
-    println!("Value range: {} to {}", min, max);
 }
 ```
 
@@ -284,18 +355,10 @@ if let Some((min, max)) = result.quantity.and_then(|q| q.value_range()) {
 5. **Context Awareness**: Use recipe context to resolve ambiguities
 
 ### Advanced Parsing
-1. **Complex Fractions**: Support for fractions like "2 1/3" in text form
+1. **Complex Fractions**: Support for fractions like "two and one-third" in text form
 2. **Temperature Ranges**: Handle "350-375°F" for cooking instructions
 3. **Preparation Methods**: Extract "diced", "chopped", "minced" modifiers
 4. **Alternative Ingredients**: Parse "1 cup butter or margarine"
-
-## Integration with Existing System
-
-The ingredient parser integrates with the existing OCR and database system:
-
-1. **OCR Output**: Raw text from image processing
-2. **Line-by-Line Parsing**: Each line processed through `parse_ingredient_line()`
-3. **Structured Storage**: Parsed entries stored alongside original text
-4. **Enhanced Search**: Search by ingredient name, quantity ranges, or units
+5. **Nested Ingredients**: Handle complex descriptions like "2 cups (500ml) milk"
 
 This structured approach enables more sophisticated recipe analysis, nutrition calculation, and intelligent search capabilities while maintaining compatibility with the existing simple text storage system.
