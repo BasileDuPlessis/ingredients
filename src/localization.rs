@@ -1,9 +1,9 @@
+use anyhow::Result;
 use fluent_bundle::{FluentBundle, FluentResource};
-use unic_langid::LanguageIdentifier;
-use std::rc::Rc;
 use std::collections::HashMap;
 use std::fs;
-use anyhow::Result;
+use std::rc::Rc;
+use unic_langid::LanguageIdentifier;
 
 /// Localization manager for the Ingredients Bot
 pub struct LocalizationManager {
@@ -43,7 +43,12 @@ impl LocalizationManager {
     }
 
     /// Get a localized message in a specific language
-    pub fn get_message_in_language(&self, key: &str, language: &str, args: Option<&HashMap<&str, &str>>) -> String {
+    pub fn get_message_in_language(
+        &self,
+        key: &str,
+        language: &str,
+        args: Option<&HashMap<&str, &str>>,
+    ) -> String {
         let bundle = match self.bundles.get(language) {
             Some(bundle) => bundle,
             None => {
@@ -69,7 +74,8 @@ impl LocalizationManager {
 
         if let Some(args) = args {
             let fluent_args = fluent_bundle::FluentArgs::from_iter(
-                args.iter().map(|(k, v)| (*k, fluent_bundle::FluentValue::from(*v)))
+                args.iter()
+                    .map(|(k, v)| (*k, fluent_bundle::FluentValue::from(*v))),
             );
 
             let _ = bundle.write_pattern(&mut value, pattern, Some(&fluent_args), &mut vec![]);
@@ -81,7 +87,12 @@ impl LocalizationManager {
     }
 
     /// Get a localized message with arguments in a specific language
-    pub fn get_message_with_args_in_language(&self, key: &str, language: &str, args: &[(&str, &str)]) -> String {
+    pub fn get_message_with_args_in_language(
+        &self,
+        key: &str,
+        language: &str,
+        args: &[(&str, &str)],
+    ) -> String {
         let args_map: HashMap<&str, &str> = args.iter().cloned().collect();
         self.get_message_in_language(key, language, Some(&args_map))
     }
@@ -108,7 +119,9 @@ pub fn init_localization() -> Result<()> {
 #[allow(static_mut_refs)]
 pub fn get_localization_manager() -> &'static LocalizationManager {
     unsafe {
-        LOCALIZATION_MANAGER.as_ref().expect("Localization manager not initialized")
+        LOCALIZATION_MANAGER
+            .as_ref()
+            .expect("Localization manager not initialized")
     }
 }
 

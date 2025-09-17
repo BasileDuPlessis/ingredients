@@ -1,16 +1,16 @@
-use rusqlite::Connection;
-use std::env;
-use teloxide::prelude::*;
 use anyhow::Result;
 use log::info;
+use rusqlite::Connection;
+use std::env;
 use std::sync::Arc;
-use tokio::sync::Mutex;
 use std::time::Duration;
+use teloxide::prelude::*;
+use tokio::sync::Mutex;
 
-mod db;
 mod bot;
-mod ocr;
+mod db;
 mod localization;
+mod ocr;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -44,7 +44,7 @@ async fn main() -> Result<()> {
 
     // Initialize the bot with custom client configuration for better reliability
     let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))  // 30 second timeout
+        .timeout(Duration::from_secs(30)) // 30 second timeout
         .build()
         .expect("Failed to create HTTP client");
 
@@ -53,14 +53,13 @@ async fn main() -> Result<()> {
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
     // Set up the dispatcher with shared connection
-    let handler = dptree::entry()
-        .branch(Update::filter_message().endpoint({
-            let conn = Arc::clone(&shared_conn);
-            move |bot: Bot, msg: Message| {
-                let conn = Arc::clone(&conn);
-                async move { bot::message_handler(bot, msg, conn).await }
-            }
-        }));
+    let handler = dptree::entry().branch(Update::filter_message().endpoint({
+        let conn = Arc::clone(&shared_conn);
+        move |bot: Bot, msg: Message| {
+            let conn = Arc::clone(&conn);
+            async move { bot::message_handler(bot, msg, conn).await }
+        }
+    }));
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()

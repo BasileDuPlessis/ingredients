@@ -1,25 +1,31 @@
+use anyhow::Result;
+use log::{error, info};
+use rusqlite::Connection;
+use std::io::Write;
+use std::sync::{Arc, LazyLock};
 use teloxide::prelude::*;
 use teloxide::types::FileId;
 use tempfile::NamedTempFile;
-use std::io::Write;
-use std::sync::{Arc, LazyLock};
 use tokio::sync::Mutex;
-use rusqlite::Connection;
-use anyhow::Result;
-use log::{info, error};
 
 // Import localization
-use crate::localization::{t_lang, t_args_lang};
+use crate::localization::{t_args_lang, t_lang};
 
 // Create OCR configuration with default settings
 static OCR_CONFIG: LazyLock<crate::ocr::OcrConfig> = LazyLock::new(crate::ocr::OcrConfig::default);
-static OCR_INSTANCE_MANAGER: LazyLock<crate::ocr::OcrInstanceManager> = LazyLock::new(crate::ocr::OcrInstanceManager::default);
-static CIRCUIT_BREAKER: LazyLock<crate::ocr::CircuitBreaker> = LazyLock::new(|| crate::ocr::CircuitBreaker::new(OCR_CONFIG.recovery.clone()));
+static OCR_INSTANCE_MANAGER: LazyLock<crate::ocr::OcrInstanceManager> =
+    LazyLock::new(crate::ocr::OcrInstanceManager::default);
+static CIRCUIT_BREAKER: LazyLock<crate::ocr::CircuitBreaker> =
+    LazyLock::new(|| crate::ocr::CircuitBreaker::new(OCR_CONFIG.recovery.clone()));
 
 async fn download_file(bot: &Bot, file_id: FileId) -> Result<String> {
     let file = bot.get_file(file_id).await?;
     let file_path = file.path;
-    let url = format!("https://api.telegram.org/file/bot{}/{}", bot.token(), file_path);
+    let url = format!(
+        "https://api.telegram.org/file/bot{}/{}",
+        bot.token(),
+        file_path
+    );
 
     let response = reqwest::get(&url).await?;
     let bytes = response.bytes().await?;
@@ -42,14 +48,15 @@ async fn download_and_process_image(
     success_message: &str,
     language_code: Option<&str>,
 ) -> Result<String> {
-        let temp_path = match download_file(bot, file_id).await {
-            Ok(path) => path,
-            Err(e) => {
-                error!("Failed to download image for user {chat_id}: {e:?}");
-                bot.send_message(chat_id, t_lang("error-download-failed", language_code)).await?;
-                return Err(e);
-            }
-        };    // Ensure cleanup happens even if we return early
+    let temp_path = match download_file(bot, file_id).await {
+        Ok(path) => path,
+        Err(e) => {
+            error!("Failed to download image for user {chat_id}: {e:?}");
+            bot.send_message(chat_id, t_lang("error-download-failed", language_code))
+                .await?;
+            return Err(e);
+        }
+    }; // Ensure cleanup happens even if we return early
     let result = async {
         info!("Image downloaded to: {temp_path}");
 
@@ -59,19 +66,32 @@ async fn download_and_process_image(
         // Validate image format before OCR processing
         if !crate::ocr::is_supported_image_format(&temp_path, &OCR_CONFIG) {
             info!("Unsupported image format for user {chat_id}");
-            bot.send_message(chat_id, t_lang("error-unsupported-format", language_code)).await?;
+            bot.send_message(chat_id, t_lang("error-unsupported-format", language_code))
+                .await?;
             return Ok(String::new());
         }
 
         // Extract text from the image using OCR with circuit breaker protection
-        match crate::ocr::extract_text_from_image(&temp_path, &OCR_CONFIG, &OCR_INSTANCE_MANAGER, &CIRCUIT_BREAKER).await {
+        match crate::ocr::extract_text_from_image(
+            &temp_path,
+            &OCR_CONFIG,
+            &OCR_INSTANCE_MANAGER,
+            &CIRCUIT_BREAKER,
+        )
+        .await
+        {
             Ok(extracted_text) => {
                 if extracted_text.is_empty() {
                     info!("No text found in image from user {chat_id}");
-                    bot.send_message(chat_id, t_lang("error-no-text-found", language_code)).await?;
+                    bot.send_message(chat_id, t_lang("error-no-text-found", language_code))
+                        .await?;
                     Ok(String::new())
                 } else {
-                    info!("Successfully extracted {} characters of text from user {}", extracted_text.len(), chat_id);
+                    info!(
+                        "Successfully extracted {} characters of text from user {}",
+                        extracted_text.len(),
+                        chat_id
+                    );
 
                     // Send the extracted text back to the user
                     let response_message = format!(
@@ -93,9 +113,7 @@ async fn download_and_process_image(
                     crate::ocr::OcrError::Validation(msg) => {
                         t_args_lang("error-validation", &[("msg", msg)], language_code)
                     }
-                    crate::ocr::OcrError::ImageLoad(_) => {
-                        t_lang("error-image-load", language_code)
-                    }
+                    crate::ocr::OcrError::ImageLoad(_) => t_lang("error-image-load", language_code),
                     crate::ocr::OcrError::Initialization(_) => {
                         t_lang("error-ocr-initialization", language_code)
                     }
@@ -117,7 +135,8 @@ async fn download_and_process_image(
                 Err(anyhow::anyhow!("OCR processing failed: {:?}", e))
             }
         }
-    }.await;
+    }
+    .await;
 
     // Always clean up the temporary file
     if let Err(cleanup_err) = std::fs::remove_file(&temp_path) {
@@ -134,7 +153,11 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
         info!("Received text message from user {}: {}", msg.chat.id, text);
 
         // Extract user's language code from Telegram
-        let language_code = msg.from.as_ref().and_then(|user| user.language_code.as_ref()).map(|s| s.as_str());
+        let language_code = msg
+            .from
+            .as_ref()
+            .and_then(|user| user.language_code.as_ref())
+            .map(|s| s.as_str());
 
         // Handle /start command
         if text == "/start" {
@@ -167,13 +190,22 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
                 t_lang("help-tip2", language_code),
                 t_lang("help-tip3", language_code),
                 t_lang("help-tip4", language_code),
-                t_lang("help-final", language_code)
-            ].join("\n\n");
+                t_lang("help-final", language_code),
+            ]
+            .join("\n\n");
             bot.send_message(msg.chat.id, help_message).await?;
         }
         // Handle regular text messages
         else {
-            bot.send_message(msg.chat.id, format!("{} {}", t_args_lang("text-response", &[("text", text)], language_code), t_lang("text-tip", language_code))).await?;
+            bot.send_message(
+                msg.chat.id,
+                format!(
+                    "{} {}",
+                    t_args_lang("text-response", &[("text", text)], language_code),
+                    t_lang("text-tip", language_code)
+                ),
+            )
+            .await?;
         }
     }
     Ok(())
@@ -181,9 +213,20 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
 
 async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
     // Extract user's language code from Telegram
-    let language_code = msg.from.as_ref().and_then(|user| user.language_code.as_ref()).map(|s| s.as_str());
+    let language_code = msg
+        .from
+        .as_ref()
+        .and_then(|user| user.language_code.as_ref())
+        .map(|s| s.as_str());
 
-    info!("{}", t_args_lang("photo-received", &[("user_id", &msg.chat.id.to_string())], language_code));
+    info!(
+        "{}",
+        t_args_lang(
+            "photo-received",
+            &[("user_id", &msg.chat.id.to_string())],
+            language_code
+        )
+    );
     if let Some(photos) = msg.photo() {
         if let Some(largest_photo) = photos.last() {
             let _temp_path = download_and_process_image(
@@ -192,7 +235,8 @@ async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
                 msg.chat.id,
                 &t_lang("processing-photo", language_code),
                 language_code,
-            ).await;
+            )
+            .await;
         }
     }
     Ok(())
@@ -200,26 +244,57 @@ async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
 
 async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
     // Extract user's language code from Telegram
-    let language_code = msg.from.as_ref().and_then(|user| user.language_code.as_ref()).map(|s| s.as_str());
+    let language_code = msg
+        .from
+        .as_ref()
+        .and_then(|user| user.language_code.as_ref())
+        .map(|s| s.as_str());
 
     if let Some(doc) = msg.document() {
         if let Some(mime_type) = &doc.mime_type {
             if mime_type.to_string().starts_with("image/") {
-                info!("{}", t_args_lang("document-image", &[("user_id", &msg.chat.id.to_string())], language_code));
+                info!(
+                    "{}",
+                    t_args_lang(
+                        "document-image",
+                        &[("user_id", &msg.chat.id.to_string())],
+                        language_code
+                    )
+                );
                 let _temp_path = download_and_process_image(
                     bot,
                     doc.file.id.clone(),
                     msg.chat.id,
                     &t_lang("processing-document", language_code),
                     language_code,
-                ).await;
+                )
+                .await;
             } else {
-                info!("{}", t_args_lang("document-non-image", &[("user_id", &msg.chat.id.to_string())], language_code));
-                bot.send_message(msg.chat.id, t_lang("error-unsupported-format", language_code)).await?;
+                info!(
+                    "{}",
+                    t_args_lang(
+                        "document-non-image",
+                        &[("user_id", &msg.chat.id.to_string())],
+                        language_code
+                    )
+                );
+                bot.send_message(
+                    msg.chat.id,
+                    t_lang("error-unsupported-format", language_code),
+                )
+                .await?;
             }
         } else {
-            info!("{}", t_args_lang("document-no-mime", &[("user_id", &msg.chat.id.to_string())], language_code));
-            bot.send_message(msg.chat.id, t_lang("error-no-mime-type", language_code)).await?;
+            info!(
+                "{}",
+                t_args_lang(
+                    "document-no-mime",
+                    &[("user_id", &msg.chat.id.to_string())],
+                    language_code
+                )
+            );
+            bot.send_message(msg.chat.id, t_lang("error-no-mime-type", language_code))
+                .await?;
         }
     }
     Ok(())
@@ -227,9 +302,20 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
 
 async fn handle_unsupported_message(bot: &Bot, msg: &Message) -> Result<()> {
     // Extract user's language code from Telegram
-    let language_code = msg.from.as_ref().and_then(|user| user.language_code.as_ref()).map(|s| s.as_str());
+    let language_code = msg
+        .from
+        .as_ref()
+        .and_then(|user| user.language_code.as_ref())
+        .map(|s| s.as_str());
 
-    info!("{}", t_args_lang("unsupported-received", &[("user_id", &msg.chat.id.to_string())], language_code));
+    info!(
+        "{}",
+        t_args_lang(
+            "unsupported-received",
+            &[("user_id", &msg.chat.id.to_string())],
+            language_code
+        )
+    );
     let help_message = format!(
         "{}\n\n{}\n{}\n{}\n{}\n{}\n\n{}",
         t_lang("unsupported-title", language_code),
@@ -265,15 +351,17 @@ pub async fn message_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rusqlite::Connection;
     use std::fs;
     use std::io::Write;
-    use tempfile::NamedTempFile;
-    use rusqlite::Connection;
     use std::sync::Arc;
+    use tempfile::NamedTempFile;
     use tokio::sync::Mutex;
 
     // Import types from the ocr module for testing
-    use crate::ocr::{OcrConfig, CircuitBreaker, OcrInstanceManager, RecoveryConfig, FormatSizeLimits};
+    use crate::ocr::{
+        CircuitBreaker, FormatSizeLimits, OcrConfig, OcrInstanceManager, RecoveryConfig,
+    };
 
     /// Test static configuration initialization
     #[test]
@@ -325,7 +413,8 @@ mod tests {
     /// Test error message formatting
     #[test]
     fn test_error_message_formatting() {
-        let validation_error = crate::ocr::OcrError::Validation("Test validation error".to_string());
+        let validation_error =
+            crate::ocr::OcrError::Validation("Test validation error".to_string());
         let display_msg = format!("{}", validation_error);
         assert_eq!(display_msg, "Validation error: Test validation error");
 
@@ -482,7 +571,8 @@ mod tests {
     #[test]
     fn test_image_format_validation() {
         // Test with a non-existent file (should return false)
-        let result = crate::ocr::is_supported_image_format("/non/existent/file.png", &OcrConfig::default());
+        let result =
+            crate::ocr::is_supported_image_format("/non/existent/file.png", &OcrConfig::default());
         assert!(!result);
     }
 
@@ -531,7 +621,7 @@ mod tests {
             "Send me photos",
             "OCR",
             "start",
-            "help"
+            "help",
         ];
 
         // This is a basic content check - in a real scenario we'd mock the bot
@@ -551,7 +641,7 @@ mod tests {
             "Send a photo",
             "Supported formats",
             "File size limit",
-            "clear, well-lit images"
+            "clear, well-lit images",
         ];
 
         // This is a basic content check - in a real scenario we'd mock the bot
@@ -565,7 +655,7 @@ mod tests {
     /// Test French localization support
     #[test]
     fn test_french_localization() {
-        use crate::localization::{init_localization, get_localization_manager};
+        use crate::localization::{get_localization_manager, init_localization};
 
         // Initialize localization
         init_localization().expect("Failed to initialize localization");
@@ -573,51 +663,113 @@ mod tests {
         let manager = get_localization_manager();
 
         // Test that both English and French are supported
-        assert!(manager.is_language_supported("en"), "English should be supported");
-        assert!(manager.is_language_supported("fr"), "French should be supported");
-        assert!(!manager.is_language_supported("es"), "Spanish should not be supported");
+        assert!(
+            manager.is_language_supported("en"),
+            "English should be supported"
+        );
+        assert!(
+            manager.is_language_supported("fr"),
+            "French should be supported"
+        );
+        assert!(
+            !manager.is_language_supported("es"),
+            "Spanish should not be supported"
+        );
 
         // Test basic messages in both languages
         let welcome_title_en = manager.get_message_in_language("welcome-title", "en", None);
         let welcome_title_fr = manager.get_message_in_language("welcome-title", "fr", None);
 
-        assert!(!welcome_title_en.is_empty(), "English welcome-title should not be empty");
-        assert!(!welcome_title_fr.is_empty(), "French welcome-title should not be empty");
-        assert_ne!(welcome_title_en, welcome_title_fr, "English and French welcome-title should be different");
+        assert!(
+            !welcome_title_en.is_empty(),
+            "English welcome-title should not be empty"
+        );
+        assert!(
+            !welcome_title_fr.is_empty(),
+            "French welcome-title should not be empty"
+        );
+        assert_ne!(
+            welcome_title_en, welcome_title_fr,
+            "English and French welcome-title should be different"
+        );
 
         // Test messages with arguments - let's find a key that uses arguments
         let help_step1_en = manager.get_message_in_language("help-step1", "en", None);
         let help_step1_fr = manager.get_message_in_language("help-step1", "fr", None);
 
-        assert!(!help_step1_en.is_empty(), "English help-step1 should not be empty");
-        assert!(!help_step1_fr.is_empty(), "French help-step1 should not be empty");
-        assert_ne!(help_step1_en, help_step1_fr, "English and French help-step1 should be different");
+        assert!(
+            !help_step1_en.is_empty(),
+            "English help-step1 should not be empty"
+        );
+        assert!(
+            !help_step1_fr.is_empty(),
+            "French help-step1 should not be empty"
+        );
+        assert_ne!(
+            help_step1_en, help_step1_fr,
+            "English and French help-step1 should be different"
+        );
 
         // Test fallback to English for unsupported language
         let fallback = manager.get_message_in_language("welcome-title", "de", None);
-        assert_eq!(fallback, welcome_title_en, "Unsupported language should fallback to English");
+        assert_eq!(
+            fallback, welcome_title_en,
+            "Unsupported language should fallback to English"
+        );
     }
 
     /// Test language detection functionality
     #[test]
     fn test_language_detection() {
-        use crate::localization::{init_localization, detect_language};
+        use crate::localization::{detect_language, init_localization};
 
         // Initialize localization
         init_localization().expect("Failed to initialize localization");
 
         // Test supported languages
-        assert_eq!(detect_language(Some("fr")), "fr", "French should be detected as 'fr'");
-        assert_eq!(detect_language(Some("en")), "en", "English should be detected as 'en'");
-        assert_eq!(detect_language(Some("fr-FR")), "fr", "French with locale should be detected as 'fr'");
-        assert_eq!(detect_language(Some("en-US")), "en", "English with locale should be detected as 'en'");
+        assert_eq!(
+            detect_language(Some("fr")),
+            "fr",
+            "French should be detected as 'fr'"
+        );
+        assert_eq!(
+            detect_language(Some("en")),
+            "en",
+            "English should be detected as 'en'"
+        );
+        assert_eq!(
+            detect_language(Some("fr-FR")),
+            "fr",
+            "French with locale should be detected as 'fr'"
+        );
+        assert_eq!(
+            detect_language(Some("en-US")),
+            "en",
+            "English with locale should be detected as 'en'"
+        );
 
         // Test unsupported languages fallback to English
-        assert_eq!(detect_language(Some("es")), "en", "Unsupported language should fallback to English");
-        assert_eq!(detect_language(Some("de")), "en", "German should fallback to English");
-        assert_eq!(detect_language(Some("zh-CN")), "en", "Chinese should fallback to English");
+        assert_eq!(
+            detect_language(Some("es")),
+            "en",
+            "Unsupported language should fallback to English"
+        );
+        assert_eq!(
+            detect_language(Some("de")),
+            "en",
+            "German should fallback to English"
+        );
+        assert_eq!(
+            detect_language(Some("zh-CN")),
+            "en",
+            "Chinese should fallback to English"
+        );
 
         // Test None case
-        assert_eq!(detect_language(None), "en", "None should default to English");
+        assert_eq!(
+            detect_language(None),
+            "en",
+            "None should default to English"
+        );
     }
 }

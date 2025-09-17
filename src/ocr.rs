@@ -24,14 +24,14 @@
 //! - `anyhow`: Error handling
 //! - `log`: Logging functionality
 
+use anyhow::Result;
 use leptess::LepTess;
+use log::{error, info, warn};
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, Read};
 use std::sync::{Arc, Mutex};
-use std::collections::HashMap;
 use std::time::{Duration, Instant};
-use anyhow::Result;
-use log::{info, warn, error};
 
 // Constants for OCR configuration
 const DEFAULT_LANGUAGES: &str = "eng+fra";
@@ -95,8 +95,8 @@ impl Default for RecoveryConfig {
     fn default() -> Self {
         Self {
             max_retries: 3,
-            base_retry_delay_ms: 1000, // 1 second
-            max_retry_delay_ms: 10000, // 10 seconds
+            base_retry_delay_ms: 1000,  // 1 second
+            max_retry_delay_ms: 10000,  // 10 seconds
             operation_timeout_secs: 30, // 30 seconds
             circuit_breaker_threshold: 5,
             circuit_breaker_reset_secs: 60, // 1 minute
@@ -248,10 +248,10 @@ pub struct FormatSizeLimits {
 impl Default for FormatSizeLimits {
     fn default() -> Self {
         Self {
-            png_max: 15 * 1024 * 1024,    // 15MB for PNG
-            jpeg_max: 10 * 1024 * 1024,   // 10MB for JPEG
-            bmp_max: 5 * 1024 * 1024,     // 5MB for BMP
-            tiff_max: 20 * 1024 * 1024,   // 20MB for TIFF
+            png_max: 15 * 1024 * 1024,          // 15MB for PNG
+            jpeg_max: 10 * 1024 * 1024,         // 10MB for JPEG
+            bmp_max: 5 * 1024 * 1024,           // 5MB for BMP
+            tiff_max: 20 * 1024 * 1024,         // 20MB for TIFF
             min_quick_reject: 50 * 1024 * 1024, // 50MB quick reject
         }
     }
@@ -450,7 +450,11 @@ fn validate_image_path(image_path: &str, config: &OcrConfig) -> Result<()> {
             }
         }
         Err(e) => {
-            return Err(anyhow::anyhow!("Cannot read file metadata: {} - {}", image_path, e));
+            return Err(anyhow::anyhow!(
+                "Cannot read file metadata: {} - {}",
+                image_path,
+                e
+            ));
         }
     }
 
@@ -533,10 +537,13 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
 
     // Quick rejection for extremely large files
     if file_size > config.format_limits.min_quick_reject {
-        info!("Quick rejecting file {image_path}: {file_size} bytes exceeds quick reject threshold");
+        info!(
+            "Quick rejecting file {image_path}: {file_size} bytes exceeds quick reject threshold"
+        );
         return Err(anyhow::anyhow!(
             "File too large for processing: {} bytes (exceeds quick reject threshold of {} bytes)",
-            file_size, config.format_limits.min_quick_reject
+            file_size,
+            config.format_limits.min_quick_reject
         ));
     }
 
@@ -554,23 +561,35 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                         Ok(format) => {
                             let format_limit = match format {
                                 image::ImageFormat::Png => {
-                                    info!("Detected PNG format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.png_max / (1024 * 1024));
+                                    info!(
+                                        "Detected PNG format for {}, applying {}MB limit",
+                                        image_path,
+                                        config.format_limits.png_max / (1024 * 1024)
+                                    );
                                     config.format_limits.png_max
                                 }
                                 image::ImageFormat::Jpeg => {
-                                    info!("Detected JPEG format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.jpeg_max / (1024 * 1024));
+                                    info!(
+                                        "Detected JPEG format for {}, applying {}MB limit",
+                                        image_path,
+                                        config.format_limits.jpeg_max / (1024 * 1024)
+                                    );
                                     config.format_limits.jpeg_max
                                 }
                                 image::ImageFormat::Bmp => {
-                                    info!("Detected BMP format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.bmp_max / (1024 * 1024));
+                                    info!(
+                                        "Detected BMP format for {}, applying {}MB limit",
+                                        image_path,
+                                        config.format_limits.bmp_max / (1024 * 1024)
+                                    );
                                     config.format_limits.bmp_max
                                 }
                                 image::ImageFormat::Tiff => {
-                                    info!("Detected TIFF format for {}, applying {}MB limit",
-                                          image_path, config.format_limits.tiff_max / (1024 * 1024));
+                                    info!(
+                                        "Detected TIFF format for {}, applying {}MB limit",
+                                        image_path,
+                                        config.format_limits.tiff_max / (1024 * 1024)
+                                    );
                                     config.format_limits.tiff_max
                                 }
                                 _ => {
@@ -588,7 +607,9 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
 
                             // Estimate memory usage for processing
                             let estimated_memory_mb = estimate_memory_usage(file_size, &format);
-                            info!("Estimated memory usage for {image_path}: {estimated_memory_mb}MB");
+                            info!(
+                                "Estimated memory usage for {image_path}: {estimated_memory_mb}MB"
+                            );
 
                             // Check if estimated memory usage exceeds safe limits
                             let max_memory_mb = 100.0; // 100MB memory limit for OCR processing
@@ -607,7 +628,8 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                             if file_size > config.max_file_size {
                                 return Err(anyhow::anyhow!(
                                     "Image file too large: {} bytes (maximum allowed: {} bytes)",
-                                    file_size, config.max_file_size
+                                    file_size,
+                                    config.max_file_size
                                 ));
                             }
                             Ok(())
@@ -620,16 +642,19 @@ fn validate_image_with_format_limits(image_path: &str, config: &OcrConfig) -> Re
                     if file_size > config.max_file_size {
                         return Err(anyhow::anyhow!(
                             "Image file too large: {} bytes (maximum allowed: {} bytes)",
-                            file_size, config.max_file_size
+                            file_size,
+                            config.max_file_size
                         ));
                     }
                     Ok(())
                 }
             }
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("Cannot open image file for validation: {} - {}", image_path, e))
-        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Cannot open image file for validation: {} - {}",
+            image_path,
+            e
+        )),
     }
 }
 
@@ -688,11 +713,11 @@ fn estimate_memory_usage(file_size: u64, format: &image::ImageFormat) -> f64 {
 
     // Memory estimation factors based on format characteristics
     let memory_factor = match format {
-        image::ImageFormat::Png => 3.0,   // PNG decompression can use 2-4x file size
-        image::ImageFormat::Jpeg => 2.5,  // JPEG decompression uses ~2-3x
-        image::ImageFormat::Bmp => 1.2,   // BMP is mostly uncompressed
-        image::ImageFormat::Tiff => 4.0,  // TIFF can be complex with layers
-        _ => 3.0, // Default estimation
+        image::ImageFormat::Png => 3.0, // PNG decompression can use 2-4x file size
+        image::ImageFormat::Jpeg => 2.5, // JPEG decompression uses ~2-3x
+        image::ImageFormat::Bmp => 1.2, // BMP is mostly uncompressed
+        image::ImageFormat::Tiff => 4.0, // TIFF can be complex with layers
+        _ => 3.0,                       // Default estimation
     };
 
     file_size_mb * memory_factor
@@ -766,7 +791,7 @@ pub async fn extract_text_from_image(
     image_path: &str,
     config: &OcrConfig,
     instance_manager: &OcrInstanceManager,
-    circuit_breaker: &CircuitBreaker
+    circuit_breaker: &CircuitBreaker,
 ) -> Result<String, OcrError> {
     // Start timing the entire OCR operation
     let start_time = std::time::Instant::now();
@@ -864,7 +889,11 @@ pub async fn extract_text_from_image(
 /// - `ImageLoadError` - Could not load image into Tesseract
 /// - `ExtractionError` - OCR processing failed
 /// - `TimeoutError` - Operation exceeded configured timeout
-async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_manager: &OcrInstanceManager) -> Result<String, OcrError> {
+async fn perform_ocr_extraction(
+    image_path: &str,
+    config: &OcrConfig,
+    instance_manager: &OcrInstanceManager,
+) -> Result<String, OcrError> {
     // Start timing the actual OCR processing
     let ocr_start_time = std::time::Instant::now();
 
@@ -873,7 +902,8 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
 
     let result = tokio::time::timeout(timeout_duration, async {
         // Get or create OCR instance from the manager
-        let instance = instance_manager.get_instance(config)
+        let instance = instance_manager
+            .get_instance(config)
             .map_err(|e| OcrError::Initialization(e.to_string()))?;
 
         // Perform OCR processing with the reused instance
@@ -884,8 +914,9 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
                 .map_err(|e| OcrError::ImageLoad(format!("Failed to load image for OCR: {e}")))?;
 
             // Extract text from the image
-            tess.get_utf8_text()
-                .map_err(|e| OcrError::Extraction(format!("Failed to extract text from image: {e}")))?
+            tess.get_utf8_text().map_err(|e| {
+                OcrError::Extraction(format!("Failed to extract text from image: {e}"))
+            })?
         };
 
         // Clean up the extracted text (remove extra whitespace and empty lines)
@@ -898,14 +929,19 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
             .join("\n");
 
         Ok(cleaned_text)
-    }).await;
+    })
+    .await;
 
     let ocr_duration = ocr_start_time.elapsed();
     let ocr_ms = ocr_duration.as_millis();
 
     match result {
         Ok(Ok(text)) => {
-            info!("OCR processing completed in {}ms, extracted {} characters", ocr_ms, text.len());
+            info!(
+                "OCR processing completed in {}ms, extracted {} characters",
+                ocr_ms,
+                text.len()
+            );
             Ok(text)
         }
         Ok(Err(e)) => {
@@ -913,9 +949,14 @@ async fn perform_ocr_extraction(image_path: &str, config: &OcrConfig, instance_m
             Err(e)
         }
         Err(_) => {
-            warn!("OCR processing timed out after {}ms (limit: {}s)",
-                  ocr_ms, config.recovery.operation_timeout_secs);
-            Err(OcrError::Timeout(format!("OCR operation timed out after {} seconds", config.recovery.operation_timeout_secs)))
+            warn!(
+                "OCR processing timed out after {}ms (limit: {}s)",
+                ocr_ms, config.recovery.operation_timeout_secs
+            );
+            Err(OcrError::Timeout(format!(
+                "OCR operation timed out after {} seconds",
+                config.recovery.operation_timeout_secs
+            )))
         }
     }
 }
@@ -1060,10 +1101,10 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
                             // Tesseract supports: PNG, JPEG/JPG, BMP, TIFF
                             let supported = matches!(
                                 format,
-                                image::ImageFormat::Png |
-                                image::ImageFormat::Jpeg |
-                                image::ImageFormat::Bmp |
-                                image::ImageFormat::Tiff
+                                image::ImageFormat::Png
+                                    | image::ImageFormat::Jpeg
+                                    | image::ImageFormat::Bmp
+                                    | image::ImageFormat::Tiff
                             );
 
                             if supported {
@@ -1134,10 +1175,10 @@ mod tests {
     fn test_format_size_limits_defaults() {
         let limits = FormatSizeLimits::default();
 
-        assert_eq!(limits.png_max, 15 * 1024 * 1024);   // 15MB
-        assert_eq!(limits.jpeg_max, 10 * 1024 * 1024);  // 10MB
-        assert_eq!(limits.bmp_max, 5 * 1024 * 1024);    // 5MB
-        assert_eq!(limits.tiff_max, 20 * 1024 * 1024);  // 20MB
+        assert_eq!(limits.png_max, 15 * 1024 * 1024); // 15MB
+        assert_eq!(limits.jpeg_max, 10 * 1024 * 1024); // 10MB
+        assert_eq!(limits.bmp_max, 5 * 1024 * 1024); // 5MB
+        assert_eq!(limits.tiff_max, 20 * 1024 * 1024); // 20MB
         assert_eq!(limits.min_quick_reject, 50 * 1024 * 1024); // 50MB
     }
 
@@ -1383,7 +1424,8 @@ mod tests {
 
         // Test that function can be called with circuit breaker parameter
         // This verifies the function signature accepts the circuit breaker
-        let _future = extract_text_from_image(&temp_path, &config, &instance_manager, &circuit_breaker);
+        let _future =
+            extract_text_from_image(&temp_path, &config, &instance_manager, &circuit_breaker);
         // The function compiles and can be called with 4 parameters as expected
     }
 }
