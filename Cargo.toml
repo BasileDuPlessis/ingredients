@@ -21,3 +21,5 @@ fluent = "0.16" # Internationalization library
 fluent-bundle = "0.15" # Fluent bundle for message management
 fluent-resmgr = "0.0.4" # Resource manager for fluent
 unic-langid = "0.9" # Language identifier support
+regex = "1.0" # Regular expressions for ingredient parsing
+serde = { version = "1.0", features = ["derive"] } # Serialization for ingredient data

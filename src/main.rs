@@ -9,6 +9,8 @@ use tokio::sync::Mutex;
 
 mod bot;
 mod db;
+mod ingredient_model;
+mod ingredient_parser;
 mod localization;
 mod ocr;
 

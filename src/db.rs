@@ -1,6 +1,9 @@
 use anyhow::{Context, Result};
 use log::info;
 use rusqlite::{params, Connection};
+use serde_json;
+
+use crate::ingredient_model::{Ingredient, IngredientList};
 
 /// Represents an entry in the database
 #[derive(Debug, Clone, PartialEq)]
@@ -11,11 +14,22 @@ pub struct _Entry {
     pub created_at: String,
 }
 
+/// Represents a structured ingredient entry in the database
+#[derive(Debug, Clone, PartialEq)]
+pub struct IngredientEntry {
+    pub id: i64,
+    pub telegram_id: i64,
+    pub original_text: String,
+    pub parsed_ingredients: String, // JSON serialized IngredientList
+    pub parsing_confidence: f32,
+    pub created_at: String,
+}
+
 /// Initialize the database schema
 pub fn init_database_schema(conn: &Connection) -> Result<()> {
     info!("Initializing database schema...");
 
-    // Create entries table
+    // Create entries table (legacy)
     conn.execute(
         "CREATE TABLE IF NOT EXISTS entries (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -27,7 +41,21 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
     )
     .context("Failed to create entries table")?;
 
-    // Create FTS virtual table for full-text search
+    // Create structured ingredients table
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS ingredient_entries (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            telegram_id INTEGER NOT NULL,
+            original_text TEXT NOT NULL,
+            parsed_ingredients TEXT NOT NULL, -- JSON serialized IngredientList
+            parsing_confidence REAL NOT NULL DEFAULT 0.0,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )",
+        [],
+    )
+    .context("Failed to create ingredient_entries table")?;
+
+    // Create FTS virtual table for full-text search on original text
     conn.execute(
         "CREATE VIRTUAL TABLE IF NOT EXISTS entries_fts USING fts5(
             content,
@@ -38,7 +66,18 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
     )
     .context("Failed to create FTS table")?;
 
-    // Create triggers to keep FTS table in sync
+    // Create FTS virtual table for ingredient search
+    conn.execute(
+        "CREATE VIRTUAL TABLE IF NOT EXISTS ingredient_entries_fts USING fts5(
+            original_text,
+            content='ingredient_entries',
+            content_rowid='id'
+        )",
+        [],
+    )
+    .context("Failed to create ingredient FTS table")?;
+
+    // Create triggers to keep FTS table in sync (legacy entries)
     conn.execute(
         "CREATE TRIGGER IF NOT EXISTS entries_insert AFTER INSERT ON entries
          BEGIN
@@ -66,12 +105,164 @@ pub fn init_database_schema(conn: &Connection) -> Result<()> {
     )
     .context("Failed to create update trigger")?;
 
+    // Create triggers to keep ingredient FTS table in sync
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS ingredient_entries_insert AFTER INSERT ON ingredient_entries
+         BEGIN
+             INSERT INTO ingredient_entries_fts(rowid, original_text) VALUES (new.id, new.original_text);
+         END",
+        [],
+    )
+    .context("Failed to create ingredient insert trigger")?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS ingredient_entries_delete AFTER DELETE ON ingredient_entries
+         BEGIN
+             DELETE FROM ingredient_entries_fts WHERE rowid = old.id;
+         END",
+        [],
+    )
+    .context("Failed to create ingredient delete trigger")?;
+
+    conn.execute(
+        "CREATE TRIGGER IF NOT EXISTS ingredient_entries_update AFTER UPDATE ON ingredient_entries
+         BEGIN
+             UPDATE ingredient_entries_fts SET original_text = new.original_text WHERE rowid = new.id;
+         END",
+        [],
+    )
+    .context("Failed to create ingredient update trigger")?;
+
     info!("Database schema initialized successfully");
     Ok(())
 }
 
 /// Create a new entry in the database
 pub fn _create_entry(conn: &Connection, telegram_id: i64, content: &str) -> Result<i64> {
+    info!("Creating new entry for telegram_id: {telegram_id}");
+
+    conn.execute(
+        "INSERT INTO entries (telegram_id, content) VALUES (?1, ?2)",
+        params![telegram_id, content],
+    )
+    .context("Failed to insert new entry")?;
+
+    let entry_id = conn.last_insert_rowid();
+    info!("Entry created with ID: {entry_id}");
+
+    Ok(entry_id)
+}
+
+/// Create a new structured ingredient entry in the database
+pub fn create_ingredient_entry(
+    conn: &Connection,
+    telegram_id: i64,
+    ingredient_list: &IngredientList,
+) -> Result<i64> {
+    info!("Creating new ingredient entry for telegram_id: {telegram_id}");
+
+    let parsed_json = serde_json::to_string(ingredient_list)
+        .context("Failed to serialize ingredient list")?;
+
+    conn.execute(
+        "INSERT INTO ingredient_entries (telegram_id, original_text, parsed_ingredients, parsing_confidence) 
+         VALUES (?1, ?2, ?3, ?4)",
+        params![
+            telegram_id,
+            ingredient_list.original_text,
+            parsed_json,
+            ingredient_list.overall_confidence
+        ],
+    )
+    .context("Failed to insert new ingredient entry")?;
+
+    let entry_id = conn.last_insert_rowid();
+    info!("Ingredient entry created with ID: {entry_id}");
+
+    Ok(entry_id)
+}
+
+/// Read a structured ingredient entry from the database by ID
+pub fn read_ingredient_entry(conn: &Connection, entry_id: i64) -> Result<Option<IngredientEntry>> {
+    info!("Reading ingredient entry with ID: {entry_id}");
+
+    let mut stmt = conn
+        .prepare("SELECT id, telegram_id, original_text, parsed_ingredients, parsing_confidence, created_at 
+                  FROM ingredient_entries WHERE id = ?1")
+        .context("Failed to prepare read statement")?;
+
+    let entry = stmt.query_row(params![entry_id], |row| {
+        Ok(IngredientEntry {
+            id: row.get(0)?,
+            telegram_id: row.get(1)?,
+            original_text: row.get(2)?,
+            parsed_ingredients: row.get(3)?,
+            parsing_confidence: row.get(4)?,
+            created_at: row.get(5)?,
+        })
+    });
+
+    match entry {
+        Ok(entry) => {
+            info!("Ingredient entry found with ID: {entry_id}");
+            Ok(Some(entry))
+        }
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            info!("No ingredient entry found with ID: {entry_id}");
+            Ok(None)
+        }
+        Err(e) => Err(e).context("Failed to read ingredient entry"),
+    }
+}
+
+/// Get parsed ingredients from a database entry
+pub fn get_parsed_ingredients(entry: &IngredientEntry) -> Result<IngredientList> {
+    serde_json::from_str(&entry.parsed_ingredients)
+        .context("Failed to deserialize ingredient list")
+}
+
+/// Search ingredient entries by text content
+pub fn search_ingredient_entries(
+    conn: &Connection,
+    query: &str,
+    limit: Option<usize>,
+) -> Result<Vec<IngredientEntry>> {
+    info!("Searching ingredient entries with query: {query}");
+
+    let limit_clause = match limit {
+        Some(l) => format!(" LIMIT {}", l),
+        None => String::new(),
+    };
+
+    let sql = format!(
+        "SELECT ie.id, ie.telegram_id, ie.original_text, ie.parsed_ingredients, ie.parsing_confidence, ie.created_at
+         FROM ingredient_entries ie
+         JOIN ingredient_entries_fts fts ON ie.id = fts.rowid
+         WHERE ingredient_entries_fts MATCH ?1
+         ORDER BY rank{}",
+        limit_clause
+    );
+
+    let mut stmt = conn.prepare(&sql).context("Failed to prepare search statement")?;
+
+    let entries = stmt
+        .query_map(params![query], |row| {
+            Ok(IngredientEntry {
+                id: row.get(0)?,
+                telegram_id: row.get(1)?,
+                original_text: row.get(2)?,
+                parsed_ingredients: row.get(3)?,
+                parsing_confidence: row.get(4)?,
+                created_at: row.get(5)?,
+            })
+        })
+        .context("Failed to execute search query")?
+        .collect::<Result<Vec<_>, _>>()
+        .context("Failed to collect search results")?;
+
+    info!("Found {} ingredient entries matching query", entries.len());
+    Ok(entries)
+}
     info!("Creating new entry for telegram_id: {telegram_id}");
 
     conn.execute(
@@ -720,6 +911,66 @@ mod tests {
         // Second deletion should fail
         let delete_result2 = _delete_entry(&conn, entry_id)?;
         assert!(!delete_result2);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_create_ingredient_entry() -> Result<()> {
+        use crate::ingredient_model::{Ingredient, IngredientList, Quantity, Unit};
+        
+        let (conn, _temp_file) = setup_test_db()?;
+
+        let telegram_id = 12345;
+        let mut ingredient_list = IngredientList::new("2 cups flour\n1 tbsp salt".to_string());
+        
+        ingredient_list.add_ingredient(
+            Ingredient::new("flour")
+                .with_quantity(Quantity::exact(2.0, Unit::Cups))
+        );
+        
+        ingredient_list.add_ingredient(
+            Ingredient::new("salt")
+                .with_quantity(Quantity::exact(1.0, Unit::Tablespoons))
+        );
+
+        let entry_id = create_ingredient_entry(&conn, telegram_id, &ingredient_list)?;
+
+        // Verify the entry was created
+        let entry = read_ingredient_entry(&conn, entry_id)?.unwrap();
+        assert_eq!(entry.telegram_id, telegram_id);
+        assert_eq!(entry.original_text, "2 cups flour\n1 tbsp salt");
+        assert!(entry.parsing_confidence > 0.0);
+
+        // Verify we can deserialize the parsed ingredients
+        let parsed = get_parsed_ingredients(&entry)?;
+        assert_eq!(parsed.ingredients.len(), 2);
+        assert_eq!(parsed.ingredients[0].name, "flour");
+        assert_eq!(parsed.ingredients[1].name, "salt");
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_ingredient_entry_search() -> Result<()> {
+        use crate::ingredient_model::{Ingredient, IngredientList, Quantity, Unit};
+        
+        let (conn, _temp_file) = setup_test_db()?;
+
+        let telegram_id = 12345;
+        let mut ingredient_list = IngredientList::new("2 cups flour for baking".to_string());
+        
+        ingredient_list.add_ingredient(
+            Ingredient::new("flour")
+                .with_quantity(Quantity::exact(2.0, Unit::Cups))
+        );
+
+        create_ingredient_entry(&conn, telegram_id, &ingredient_list)?;
+
+        // Search for entries containing "flour"
+        let results = search_ingredient_entries(&conn, "flour", Some(10))?;
+        assert_eq!(results.len(), 1);
+        assert!(results[0].original_text.contains("flour"));
 
         Ok(())
     }
