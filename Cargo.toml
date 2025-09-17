@@ -23,3 +23,8 @@ fluent-resmgr = "0.0.4" # Resource manager for fluent
 unic-langid = "0.9" # Language identifier support
 regex = "1.0" # Regular expressions for ingredient parsing
 serde = { version = "1.0", features = ["derive"] } # Serialization for ingredient data
+serde_json = "1.0" # JSON serialization for database storage
+
+[[example]]
+name = "data_model_examples"
+path = "examples/data_model_examples.rs"
