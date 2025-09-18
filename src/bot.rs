@@ -72,7 +72,7 @@ async fn download_and_process_image(
         }
 
         // Extract text from the image using OCR with circuit breaker protection
-        match crate::ocr::extract_text_from_image(
+        match crate::ocr::extract_and_parse_ingredients(
             &temp_path,
             &OCR_CONFIG,
             &OCR_INSTANCE_MANAGER,
@@ -80,7 +80,7 @@ async fn download_and_process_image(
         )
         .await
         {
-            Ok(extracted_text) => {
+            Ok((extracted_text, ingredients)) => {
                 if extracted_text.is_empty() {
                     info!("No text found in image from user {chat_id}");
                     bot.send_message(chat_id, t_lang("error-no-text-found", language_code))
@@ -88,18 +88,46 @@ async fn download_and_process_image(
                     Ok(String::new())
                 } else {
                     info!(
-                        "Successfully extracted {} characters of text from user {}",
+                        "Successfully extracted {} characters of text and {} ingredients from user {}",
                         extracted_text.len(),
+                        ingredients.len(),
                         chat_id
                     );
 
                     // Send the extracted text back to the user
-                    let response_message = format!(
+                    let mut response_message = format!(
                         "{}\n\n{}```\n{}\n```",
                         t_lang("success-extraction", language_code),
                         t_lang("success-extracted-text", language_code),
                         extracted_text
                     );
+
+                    // Add ingredient parsing results if any ingredients were found
+                    if !ingredients.is_empty() {
+                        response_message.push_str(&format!(
+                            "\n\n🥘 **Parsed Ingredients ({}):**\n",
+                            ingredients.len()
+                        ));
+                        
+                        for ingredient in &ingredients {
+                            let measurement_text = ingredient.measurement
+                                .as_ref()
+                                .map(|m| format!(" {}", m))
+                                .unwrap_or_default();
+                            
+                            response_message.push_str(&format!(
+                                "• {} {} {}\n",
+                                ingredient.quantity,
+                                measurement_text,
+                                ingredient.ingredient_name
+                            ));
+                        }
+                        
+                        response_message.push_str("\n💡 *Lines not matching the ingredient pattern (quantity + measurement + name) were filtered out.*");
+                    } else {
+                        response_message.push_str("\n\n📝 *No structured ingredients found. Try images with ingredient lists like '1 cup sugar', '2 eggs', etc.*");
+                    }
+
                     bot.send_message(chat_id, &response_message).await?;
 
                     Ok(extracted_text)
@@ -182,7 +210,10 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
                 t_lang("help-step2", language_code),
                 t_lang("help-step3", language_code),
                 t_lang("help-step4", language_code),
+                t_lang("help-step5", language_code),
                 t_lang("help-formats", language_code),
+                t_lang("help-limits", language_code),
+                t_lang("help-ingredient-example", language_code),
                 t_lang("help-commands", language_code),
                 t_lang("help-start", language_code),
                 t_lang("help-tips", language_code),

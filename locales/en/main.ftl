@@ -7,6 +7,7 @@ welcome-features =
     📸 **Send me photos** of ingredient lists, recipes, or any text you want to extract
     📄 **Send me image files** (PNG, JPG, JPEG, BMP, TIFF, TIF)
     🔍 **I'll process them with OCR** and send back the extracted text
+    🥘 **For ingredient lists**, I'll also parse and structure them automatically
     💾 **All extracted text is stored** for future reference
 welcome-commands = Commands:
 welcome-start = /start - Show this welcome message
@@ -19,8 +20,10 @@ help-step1 = 1. 📸 Send a photo of text you want to extract
 help-step2 = 2. 📎 Or send an image file (PNG, JPG, JPEG, BMP, TIFF, TIF)
 help-step3 = 3. ⏳ I'll process it with OCR technology
 help-step4 = 4. 📝 You'll receive the extracted text
+help-step5 = 5. 🥘 For ingredient lists, I'll also show structured ingredients
 help-formats = Supported formats: PNG, JPG, JPEG, BMP, TIFF, TIF
 help-limits = File size limit: 10MB for JPEG, 5MB for other formats
+help-ingredient-example = Example: "1 cup sugar" becomes quantity=1, measurement=cup, ingredient=sugar
 help-commands = Commands:
 help-start = /start - Welcome message
 help-help = /help - This help message
