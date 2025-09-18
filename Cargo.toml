@@ -17,6 +17,7 @@ reqwest = { version = "0.12", features = ["json"] }
 leptess = "0.14" # Rust binding for Tesseract and Leptonica
 image = "0.24"    # For image handling if needed
 rand = "0.8" # For random jitter in retry delays
+regex = "1.10" # Regular expressions for ingredient parsing
 fluent = "0.16" # Internationalization library
 fluent-bundle = "0.15" # Fluent bundle for message management
 fluent-resmgr = "0.0.4" # Resource manager for fluent

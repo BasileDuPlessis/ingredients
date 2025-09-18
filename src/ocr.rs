@@ -33,6 +33,9 @@ use std::io::{BufReader, Read};
 use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
+// Re-export ingredient parser types for convenience
+pub use crate::ingredient_parser::ParsedIngredient;
+
 // Constants for OCR configuration
 const DEFAULT_LANGUAGES: &str = "eng+fra";
 const FORMAT_DETECTION_BUFFER_SIZE: usize = 32;
@@ -1138,6 +1141,89 @@ pub fn is_supported_image_format(file_path: &str, config: &OcrConfig) -> bool {
     }
 }
 
+/// Extract and parse ingredients from an image using OCR
+///
+/// This function combines OCR text extraction with ingredient parsing to provide
+/// structured ingredient data from images. It first extracts text using Tesseract OCR,
+/// then parses the text to identify ingredient lines matching the pattern:
+/// quantity + measurement (optional) + ingredient name.
+///
+/// # Arguments
+///
+/// * `image_path` - Path to the image file to process (must be absolute path)
+/// * `config` - OCR configuration including language settings, timeouts, and recovery options
+/// * `instance_manager` - Manager for OCR instance reuse to improve performance
+/// * `circuit_breaker` - Circuit breaker for fault tolerance and cascading failure prevention
+///
+/// # Returns
+///
+/// Returns `Result<(String, Vec<ParsedIngredient>), OcrError>` containing:
+/// - The raw extracted text from OCR
+/// - A vector of parsed ingredients that match the expected pattern
+///
+/// # Examples
+///
+/// ```rust,no_run
+/// use ingredients::ocr::{extract_and_parse_ingredients, OcrConfig, OcrInstanceManager, CircuitBreaker};
+///
+/// # async fn example() -> Result<(), Box<dyn std::error::Error>> {
+/// let config = OcrConfig::default();
+/// let instance_manager = OcrInstanceManager::new();
+/// let circuit_breaker = CircuitBreaker::new(config.recovery.clone());
+///
+/// // Process an image of ingredients list
+/// let (raw_text, ingredients) = extract_and_parse_ingredients(
+///     "/path/to/ingredients.jpg", 
+///     &config, 
+///     &instance_manager, 
+///     &circuit_breaker
+/// ).await?;
+///
+/// println!("Raw OCR text: {}", raw_text);
+/// println!("Parsed {} ingredients", ingredients.len());
+/// for ingredient in ingredients {
+///     println!("{}: {} {:?}", ingredient.quantity, ingredient.measurement.unwrap_or_default(), ingredient.ingredient_name);
+/// }
+/// # Ok(())
+/// # }
+/// ```
+///
+/// # Processing Steps
+///
+/// 1. **OCR Extraction**: Extract text from image using Tesseract OCR
+/// 2. **Ingredient Parsing**: Parse extracted text to identify ingredient lines
+/// 3. **Pattern Matching**: Match lines against quantity + measurement + ingredient pattern
+/// 4. **Validation**: Validate measurement units and ingredient names
+/// 5. **Structured Output**: Return both raw text and parsed ingredient data
+///
+/// # Supported Patterns
+///
+/// - `"1 cup sugar"` → quantity="1", measurement="cup", ingredient="sugar"
+/// - `"2 eggs"` → quantity="2", measurement=None, ingredient="eggs"  
+/// - `"1/2 tsp vanilla"` → quantity="1/2", measurement="tsp", ingredient="vanilla"
+/// - `"100 g flour"` → quantity="100", measurement="g", ingredient="flour"
+///
+/// Lines that don't match the pattern (e.g., "Salt", "Mix well") are ignored.
+pub async fn extract_and_parse_ingredients(
+    image_path: &str,
+    config: &OcrConfig,
+    instance_manager: &OcrInstanceManager,
+    circuit_breaker: &CircuitBreaker,
+) -> Result<(String, Vec<crate::ingredient_parser::ParsedIngredient>), OcrError> {
+    // First extract text using OCR
+    let extracted_text = extract_text_from_image(image_path, config, instance_manager, circuit_breaker).await?;
+    
+    // Then parse ingredients from the extracted text
+    let ingredients = crate::ingredient_parser::extract_ingredients(&extracted_text);
+    
+    info!(
+        "Successfully extracted and parsed {} ingredients from image",
+        ingredients.len()
+    );
+    
+    Ok((extracted_text, ingredients))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1427,5 +1513,28 @@ mod tests {
         let _future =
             extract_text_from_image(&temp_path, &config, &instance_manager, &circuit_breaker);
         // The function compiles and can be called with 4 parameters as expected
+    }
+
+    /// Test extract_and_parse_ingredients function signature and return type
+    #[test]
+    fn test_extract_and_parse_ingredients_signature() {
+        let config = OcrConfig::default();
+        let instance_manager = OcrInstanceManager::new();
+        let circuit_breaker = CircuitBreaker::new(config.recovery.clone());
+
+        // Create a temporary file for testing
+        let mut temp_file = NamedTempFile::new().unwrap();
+        temp_file.write_all(b"test content").unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test that function can be called and has the expected signature
+        let _future = extract_and_parse_ingredients(
+            &temp_path, 
+            &config, 
+            &instance_manager, 
+            &circuit_breaker
+        );
+        // The function compiles and can be called with 4 parameters as expected
+        // Return type is verified by type system: Result<(String, Vec<ParsedIngredient>), OcrError>
     }
 }
