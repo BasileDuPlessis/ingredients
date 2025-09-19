@@ -1377,8 +1377,10 @@ mod tests {
     /// Test validation with oversized file
     #[test]
     fn test_validation_oversized_file() {
-        let mut config = OcrConfig::default();
-        config.max_file_size = 100; // Very small limit
+        let config = OcrConfig {
+            max_file_size: 100, // Very small limit
+            ..Default::default()
+        };
 
         // Create a file larger than the limit
         let mut temp_file = NamedTempFile::new().unwrap();

@@ -292,7 +292,7 @@ mod tests {
 
         // Verify the entry was synced to FTS table
         let mut stmt = conn.prepare("SELECT content FROM entries_fts WHERE rowid = ?1")?;
-        let mut rows = stmt.query_map(params![entry_id], |row| Ok(row.get::<_, String>(0)?))?;
+        let mut rows = stmt.query_map(params![entry_id], |row| row.get::<_, String>(0))?;
 
         if let Some(row_result) = rows.next() {
             let fts_content = row_result?;
@@ -436,7 +436,7 @@ mod tests {
         let entry = _read_entry(&conn, entry_id)?.unwrap();
 
         // Verify created_at is a valid datetime string (basic check)
-        assert!(entry.created_at.len() > 0);
+        assert!(!entry.created_at.is_empty());
         // SQLite datetime format should contain numbers
         assert!(entry.created_at.chars().any(|c| c.is_numeric()));
 
