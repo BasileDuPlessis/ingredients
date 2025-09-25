@@ -11,6 +11,9 @@ use tokio::sync::Mutex;
 // Import localization
 use crate::localization::{t_args_lang, t_lang};
 
+// Import text processing
+use crate::text_processing::{MeasurementDetector, MeasurementMatch};
+
 // Create OCR configuration with default settings
 static OCR_CONFIG: LazyLock<crate::ocr::OcrConfig> = LazyLock::new(crate::ocr::OcrConfig::default);
 static OCR_INSTANCE_MANAGER: LazyLock<crate::ocr::OcrInstanceManager> =
@@ -93,14 +96,11 @@ async fn download_and_process_image(
                         chat_id
                     );
 
-                    // Send the extracted text back to the user
-                    let response_message = format!(
-                        "{}\n\n{}```\n{}\n```",
-                        t_lang("success-extraction", language_code),
-                        t_lang("success-extracted-text", language_code),
-                        extracted_text
-                    );
-                    bot.send_message(chat_id, &response_message).await?;
+                    // Process the extracted text to find ingredients with measurements
+                    let processed_result = process_ingredients_from_text(&extracted_text, language_code);
+
+                    // Send the processed ingredient list back to the user
+                    bot.send_message(chat_id, &processed_result).await?;
 
                     Ok(extracted_text)
                 }
@@ -144,6 +144,98 @@ async fn download_and_process_image(
     } else {
         info!("Cleaned up temporary file: {temp_path}");
     }
+
+    result
+}
+
+/// Process extracted OCR text to find ingredients with measurements
+///
+/// Takes the raw OCR text and uses text processing to extract structured
+/// ingredient information with quantities and measurements.
+///
+/// # Arguments
+///
+/// * `extracted_text` - Raw text extracted from OCR
+/// * `language_code` - User's language code for localization
+///
+/// # Returns
+///
+/// Returns a formatted string with detected ingredients and measurements
+fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&str>) -> String {
+    info!("Processing extracted text for ingredients: {} characters", extracted_text.len());
+
+    // Create measurement detector with default configuration
+    let detector = match MeasurementDetector::new() {
+        Ok(detector) => detector,
+        Err(e) => {
+            error!("Failed to create measurement detector: {}", e);
+            return format!("❌ {}\n\n{}",
+                t_lang("error-processing-failed", language_code),
+                t_lang("error-try-again", language_code));
+        }
+    };
+
+    // Find all measurements in the text
+    let matches = detector.find_measurements(extracted_text);
+
+    if matches.is_empty() {
+        info!("No measurements found in extracted text");
+        return format!("📝 {}\n\n{}\n\n```\n{}\n```",
+            t_lang("no-ingredients-found", language_code),
+            t_lang("no-ingredients-suggestion", language_code),
+            extracted_text);
+    }
+
+    info!("Found {} measurement matches", matches.len());
+
+    // Group matches by line for better organization
+    let mut ingredients_by_line: std::collections::HashMap<usize, Vec<&MeasurementMatch>> =
+        std::collections::HashMap::new();
+
+    for measurement_match in &matches {
+        ingredients_by_line
+            .entry(measurement_match.line_number)
+            .or_insert_with(Vec::new)
+            .push(measurement_match);
+    }
+
+    // Format the results
+    let mut result = format!("🍳 {}\n\n", t_lang("ingredients-found", language_code));
+
+    // Sort by line number for consistent ordering
+    let mut sorted_lines: Vec<_> = ingredients_by_line.keys().collect();
+    sorted_lines.sort();
+
+    for &line_num in &sorted_lines {
+        if let Some(line_matches) = ingredients_by_line.get(line_num) {
+            result.push_str(&format!("📋 **{} {}:**\n",
+                t_lang("line", language_code),
+                line_num + 1)); // 1-indexed for user display
+
+            for measurement_match in line_matches {
+                let ingredient_display = if measurement_match.ingredient_name.is_empty() {
+                    format!("❓ {}", t_lang("unknown-ingredient", language_code))
+                } else {
+                    measurement_match.ingredient_name.clone()
+                };
+
+                result.push_str(&format!("   • **{}** → {}\n",
+                    measurement_match.text,
+                    ingredient_display));
+            }
+            result.push_str("\n");
+        }
+    }
+
+    // Add summary
+    result.push_str(&format!("📊 **{}:** {}\n\n",
+        t_lang("total-ingredients", language_code),
+        matches.len()));
+
+    // Add the original extracted text for reference
+    result.push_str(&format!("📄 {}\n```\n{}\n```",
+        t_lang("original-text", language_code),
+        extracted_text));
 
     result
 }

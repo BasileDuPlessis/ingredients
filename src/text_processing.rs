@@ -11,6 +11,7 @@
 //! - Line-by-line text analysis for ingredient lists
 
 use lazy_static::lazy_static;
+use log::{debug, info, trace, warn};
 use regex::Regex;
 use std::collections::HashSet;
 
@@ -84,6 +85,7 @@ impl MeasurementDetector {
     /// let detector = MeasurementDetector::new();
     /// ```
     pub fn new() -> Result<Self, regex::Error> {
+        info!("Creating new MeasurementDetector with default configuration");
         Ok(Self {
             pattern: DEFAULT_REGEX.clone(),
             config: MeasurementConfig::default(),
@@ -149,10 +151,15 @@ impl MeasurementDetector {
     /// ```
     pub fn with_config(config: MeasurementConfig) -> Result<Self, regex::Error> {
         let pattern = if let Some(ref custom_pattern) = config.custom_pattern {
+            debug!("Using custom regex pattern: {}", custom_pattern);
             Regex::new(custom_pattern)?
         } else {
+            debug!("Using default regex pattern");
             DEFAULT_REGEX.clone()
         };
+
+        info!("Creating MeasurementDetector with custom config: postprocessing={}, max_length={}, count_measurements={}",
+              config.enable_ingredient_postprocessing, config.max_ingredient_length, config.include_count_measurements);
 
         Ok(Self { pattern, config })
     }
@@ -191,15 +198,23 @@ impl MeasurementDetector {
         let mut matches = Vec::new();
         let mut current_pos = 0;
 
+        debug!("Finding measurements in text with {} lines", text.lines().count());
+
         for (line_number, line) in text.lines().enumerate() {
+            trace!("Processing line {}: '{}'", line_number, line);
             for capture in self.pattern.find_iter(line) {
+                let measurement_text = capture.as_str();
+                debug!("Found measurement '{}' at line {}", measurement_text, line_number);
+
                 // Extract the ingredient name from the text after the measurement
                 let measurement_end = capture.end();
                 let raw_ingredient_name = line[measurement_end..].trim().to_string();
                 let ingredient_name = self.post_process_ingredient_name(&raw_ingredient_name);
 
+                trace!("Extracted ingredient name: '{}' -> '{}'", raw_ingredient_name, ingredient_name);
+
                 matches.push(MeasurementMatch {
-                    text: capture.as_str().to_string(),
+                    text: measurement_text.to_string(),
                     ingredient_name,
                     line_number,
                     start_pos: current_pos + capture.start(),
@@ -209,6 +224,7 @@ impl MeasurementDetector {
             current_pos += line.len() + 1; // +1 for newline character
         }
 
+        info!("Found {} measurement matches in text", matches.len());
         matches
     }
 
@@ -266,7 +282,12 @@ impl MeasurementDetector {
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn has_measurements(&self, text: &str) -> bool {
-        self.pattern.is_match(text)
+        let result = self.pattern.is_match(text);
+        debug!("Checking for measurements in text: '{}' -> {}", text, result);
+        if result {
+            trace!("Pattern '{}' matched in text: '{}'", self.pattern.as_str(), text);
+        }
+        result
     }
 
     /// Post-process an ingredient name to clean it up
@@ -286,10 +307,12 @@ impl MeasurementDetector {
     /// A cleaned and processed ingredient name
     fn post_process_ingredient_name(&self, raw_name: &str) -> String {
         if !self.config.enable_ingredient_postprocessing || raw_name.trim().is_empty() {
+            trace!("Post-processing disabled or empty name: '{}'", raw_name);
             return raw_name.trim().to_string();
         }
 
         let mut name = raw_name.trim().to_string();
+        let original_name = name.clone();
 
         // Remove trailing punctuation
         name = name.trim_end_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '\'').to_string();
@@ -305,22 +328,28 @@ impl MeasurementDetector {
         for prefix in &prefixes_to_remove {
             if name.to_lowercase().starts_with(prefix) {
                 name = name[prefix.len()..].trim_start().to_string();
+                debug!("Removed prefix '{}' from ingredient name: '{}' -> '{}'", prefix.trim(), original_name, name);
                 break; // Only remove one prefix
             }
         }
 
         // Limit length to prevent overly long extractions
         if name.len() > self.config.max_ingredient_length {
-            name = name[..self.config.max_ingredient_length].to_string();
+            let truncated = name[..self.config.max_ingredient_length].to_string();
             // Try to cut at word boundary
-            if let Some(last_space) = name.rfind(' ') {
-                name = name[..last_space].to_string();
+            if let Some(last_space) = truncated.rfind(' ') {
+                name = truncated[..last_space].to_string();
+            } else {
+                name = truncated;
             }
+            warn!("Ingredient name truncated due to length limit ({} > {}): '{}' -> '{}'",
+                  original_name.len(), self.config.max_ingredient_length, original_name, name);
         }
 
         // Clean up multiple spaces
         name = name.split_whitespace().collect::<Vec<&str>>().join(" ");
 
+        trace!("Post-processed ingredient name: '{}' -> '{}'", original_name, name);
         name.trim().to_string()
     }
 

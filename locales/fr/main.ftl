@@ -49,6 +49,17 @@ success-extracted-text = 📝 **Texte extrait :**
 success-photo-downloaded = Photo téléchargée avec succès ! Traitement en cours...
 success-document-downloaded = Document image téléchargé avec succès ! Traitement en cours...
 
+# Messages de traitement des ingrédients
+ingredients-found = Ingrédients trouvés !
+no-ingredients-found = Aucun ingrédient détecté
+no-ingredients-suggestion = Je n'ai pas pu trouver de mesures ou d'ingrédients dans le texte. Essayez d'envoyer une image plus claire d'une recette ou d'une liste d'ingrédients.
+line = Ligne
+unknown-ingredient = Ingrédient inconnu
+total-ingredients = Total des ingrédients trouvés
+original-text = Texte extrait original
+error-processing-failed = Échec du traitement des ingrédients
+error-try-again = Veuillez réessayer avec une image différente.
+
 # Messages de traitement
 processing-photo = Photo téléchargée avec succès ! Traitement en cours...
 processing-document = Document image téléchargé avec succès ! Traitement en cours...

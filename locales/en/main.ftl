@@ -49,6 +49,17 @@ success-extracted-text = 📝 **Extracted Text:**
 success-photo-downloaded = Photo downloaded successfully! Processing...
 success-document-downloaded = Image document downloaded successfully! Processing...
 
+# Ingredient processing messages
+ingredients-found = Ingredients Found!
+no-ingredients-found = No Ingredients Detected
+no-ingredients-suggestion = I couldn't find any measurements or ingredients in the text. Try sending a clearer image of a recipe or ingredient list.
+line = Line
+unknown-ingredient = Unknown ingredient
+total-ingredients = Total ingredients found
+original-text = Original extracted text
+error-processing-failed = Failed to process ingredients
+error-try-again = Please try again with a different image.
+
 # Processing messages
 processing-photo = Photo downloaded successfully! Processing...
 processing-document = Image document downloaded successfully! Processing...
