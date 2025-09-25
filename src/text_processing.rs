@@ -63,7 +63,7 @@ pub struct MeasurementDetector {
 }
 
 // Default comprehensive regex pattern for measurement units
-const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?|egg(?:s)?|œuf(?:s)?)\b"#;
+const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)\b"#;
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
@@ -257,10 +257,10 @@ impl MeasurementDetector {
     /// use ingredients::text_processing::MeasurementDetector;
     ///
     /// let detector = MeasurementDetector::new()?;
-    /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt\n3 eggs";
+    /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt\n3 sachets yeast";
     /// let measurement_lines = detector.extract_measurement_lines(text);
     ///
-    /// assert_eq!(measurement_lines.len(), 3); // eggs might be detected as measurements
+    /// assert_eq!(measurement_lines.len(), 3);
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn extract_measurement_lines(&self, text: &str) -> Vec<(usize, String)> {
@@ -518,8 +518,7 @@ mod tests {
         assert!(detector.has_measurements("1 kilogramme de pommes"));
         assert!(detector.has_measurements("200 g de chocolat"));
 
-        // Test count measurements
-        assert!(detector.has_measurements("3 œufs"));
+        // Test count measurements (excluding œufs which are ingredients, not measurements)
         assert!(detector.has_measurements("2 tranches de pain"));
         assert!(detector.has_measurements("1 boîte de conserve"));
         assert!(detector.has_measurements("4 morceaux de poulet"));
@@ -568,11 +567,12 @@ mod tests {
     fn test_count_measurements() {
         let detector = create_detector();
 
-        // Test count-based measurements
-        assert!(detector.has_measurements("3 eggs"));
+        // Test count-based measurements (excluding eggs which are ingredients, not measurements)
         assert!(detector.has_measurements("2 slices bread"));
         assert!(detector.has_measurements("1 can tomatoes"));
         assert!(detector.has_measurements("4 pieces chicken"));
+        assert!(detector.has_measurements("3 sachets yeast"));
+        assert!(detector.has_measurements("2 paquets pasta"));
     }
 
     #[test]
@@ -644,7 +644,7 @@ mod tests {
         let detector = create_detector();
 
         // Test French ingredient name extraction (with post-processing enabled by default)
-        let matches = detector.find_measurements("250 g de farine\n1 litre de lait\n3 œufs");
+        let matches = detector.find_measurements("250 g de farine\n1 litre de lait\n2 tranches de pain");
 
         assert_eq!(matches.len(), 3);
 
@@ -654,8 +654,8 @@ mod tests {
         assert_eq!(matches[1].text, "1 litre");
         assert_eq!(matches[1].ingredient_name, "lait"); // "de " removed by post-processing
 
-        assert_eq!(matches[2].text, "3 œufs");
-        assert_eq!(matches[2].ingredient_name, ""); // "œufs" is both measurement and ingredient, so no text after
+        assert_eq!(matches[2].text, "2 tranches");
+        assert_eq!(matches[2].ingredient_name, "pain"); // "de " removed by post-processing
     }
 
     #[test]
@@ -718,16 +718,15 @@ mod tests {
             ("2 tbsp", true),
             ("500 ml", true),
             ("1 liter", true),
-            // Count measurements
-            ("3 eggs", true),
+            // Count measurements (excluding eggs/œufs which are ingredients)
             ("2 slices", true),
             ("1 can", true),
             ("4 pieces", true),
+            ("3 sachets", true),
             // French measurements
             ("2 tasses", true),
             ("1 cuillère à soupe", true),
             ("250 g", true),
-            ("3 œufs", true),
             // Non-measurements (should not match)
             ("recipe", false),
             ("ingredients", false),
@@ -837,7 +836,6 @@ mod tests {
             "2 grammes",
             "1 millilitre",
             "2 litres",
-            "3 œufs",
             "1 tranche",
             "2 morceaux",
             "1 boîte",
