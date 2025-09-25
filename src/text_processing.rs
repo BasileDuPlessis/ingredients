@@ -22,7 +22,7 @@ pub struct MeasurementMatch {
     pub text: String,
     /// The extracted ingredient name (e.g., "flour", "de tomates", "all-purpose flour")
     pub ingredient_name: String,
-    /// The line number where the measurement was found (0-indexed)
+    /// The line number where the measurement was found
     pub line_number: usize,
     /// The starting character position in the line
     pub start_pos: usize,
@@ -62,8 +62,8 @@ pub struct MeasurementDetector {
     config: MeasurementConfig,
 }
 
-// Default comprehensive regex pattern for measurement units
-const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)\b"#;
+// Default comprehensive regex pattern for measurement units (now supports quantity-only ingredients)
+const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+(?:\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+\w+)\b"#;
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
@@ -212,9 +212,30 @@ impl MeasurementDetector {
                     measurement_text, line_number
                 );
 
-                // Extract the ingredient name from the text after the measurement
-                let measurement_end = capture.end();
-                let raw_ingredient_name = line[measurement_end..].trim().to_string();
+                // Check if this is a quantity-only ingredient (no measurement unit)
+                let is_quantity_only = self.is_quantity_only_match(measurement_text);
+
+                let (final_measurement_text, raw_ingredient_name) = if is_quantity_only {
+                    // For quantity-only ingredients, split the match into quantity and ingredient
+                    if let Some(space_pos) = measurement_text.find(' ') {
+                        let quantity = &measurement_text[..space_pos];
+                        let ingredient = &measurement_text[space_pos + 1..];
+                        debug!(
+                            "Split quantity-only ingredient: '{}' -> quantity='{}', ingredient='{}'",
+                            measurement_text, quantity, ingredient
+                        );
+                        (quantity.to_string(), ingredient.to_string())
+                    } else {
+                        // Fallback: shouldn't happen with current regex
+                        (measurement_text.to_string(), String::new())
+                    }
+                } else {
+                    // Traditional measurement: extract ingredient name from text after the measurement
+                    let measurement_end = capture.end();
+                    let ingredient_name = line[measurement_end..].trim().to_string();
+                    (measurement_text.to_string(), ingredient_name)
+                };
+
                 let ingredient_name = self.post_process_ingredient_name(&raw_ingredient_name);
 
                 trace!(
@@ -224,7 +245,7 @@ impl MeasurementDetector {
                 );
 
                 matches.push(MeasurementMatch {
-                    text: measurement_text.to_string(),
+                    text: final_measurement_text,
                     ingredient_name,
                     line_number,
                     start_pos: current_pos + capture.start(),
@@ -305,6 +326,51 @@ impl MeasurementDetector {
             );
         }
         result
+    }
+
+    /// Check if a measurement match is quantity-only (no measurement unit)
+    ///
+    /// A match is considered quantity-only if it contains a space followed by a word
+    /// that is not a recognized measurement unit.
+    fn is_quantity_only_match(&self, measurement_text: &str) -> bool {
+        // Split the text by space
+        let parts: Vec<&str> = measurement_text.split_whitespace().collect();
+        if parts.len() != 2 {
+            return false; // Not in "number word" format
+        }
+
+        let word_part = parts[1].to_lowercase();
+
+        // Check if the word part is exactly a measurement unit
+        let measurement_units = [
+            // Volume units
+            "cup", "cups", "teaspoon", "teaspoons", "tsp", "tablespoon", "tablespoons", "tbsp",
+            "pint", "pints", "quart", "quarts", "gallon", "gallons", "fluid", "fl",
+            // Weight units
+            "g", "gram", "grams", "gramme", "grammes", "kg", "kilogram", "kilograms", "kilogramme", "kilogrammes",
+            "mg", "lb", "pound", "pounds", "oz", "ounce", "ounces",
+            // Volume units (metric)
+            "l", "liter", "liters", "litre", "litres", "ml", "milliliter", "milliliters", "millilitre", "millilitres",
+            "cc", "cl", "dl", "cm3", "mm3", "cm²", "mm²",
+            // Count units
+            "slice", "slices", "can", "cans", "bottle", "bottles", "stick", "sticks",
+            "packet", "packets", "pkg", "bag", "bags", "dash", "dashes", "pinch", "pinches",
+            "drop", "drops", "cube", "cubes", "piece", "pieces", "handful", "handfuls",
+            "bar", "bars", "sheet", "sheets", "serving", "servings", "portion", "portions",
+            // French units
+            "tasse", "tasses", "cuillère", "cuillères", "poignée", "poignées", "sachet", "sachets",
+            "paquet", "paquets", "boîte", "boîtes", "conserve", "conserves", "tranche", "tranches",
+            "morceau", "morceaux", "gousse", "gousses", "brin", "brins", "feuille", "feuilles", "bouquet", "bouquets",
+        ];
+
+        // Check if the word part is exactly a measurement unit
+        for unit in &measurement_units {
+            if word_part == *unit {
+                return false; // The word is a measurement unit, so not quantity-only
+            }
+        }
+
+        true // The word is not a measurement unit, so it's quantity-only
     }
 
     /// Post-process an ingredient name to clean it up
@@ -919,16 +985,33 @@ mod tests {
     }
 
     #[test]
-    fn test_custom_config() {
-        let config = MeasurementConfig {
-            custom_pattern: Some(r"\b\d+\s*(?:cups?|tablespoons?)\b".to_string()),
-            enable_ingredient_postprocessing: true,
-            ..Default::default()
-        };
-        let detector = MeasurementDetector::with_config(config).unwrap();
+    fn test_quantity_only_ingredients() {
+        let detector = create_detector();
 
+        // Test quantity-only ingredients (no measurement units)
+        assert!(detector.has_measurements("6 oeufs"));
+        assert!(detector.has_measurements("2 œufs"));
+        assert!(detector.has_measurements("4 pommes"));
+        assert!(detector.has_measurements("3 eggs"));
+        assert!(detector.has_measurements("5 apples"));
+
+        // Test that regular measurements still work
         assert!(detector.has_measurements("2 cups flour"));
-        assert!(detector.has_measurements("1 tablespoon sugar"));
-        assert!(!detector.has_measurements("500g butter")); // g not in custom pattern
+        assert!(detector.has_measurements("500g sugar"));
+
+        // Test that plain numbers don't match
+        assert!(!detector.has_measurements("123"));
+        assert!(!detector.has_measurements("1"));
+
+        // Test find_measurements for quantity-only ingredients
+        let matches = detector.find_measurements("6 oeufs\n4 pommes");
+        assert_eq!(matches.len(), 2);
+
+        // For quantity-only ingredients, split into quantity and ingredient name
+        assert_eq!(matches[0].text, "6");
+        assert_eq!(matches[0].ingredient_name, "oeufs");
+
+        assert_eq!(matches[1].text, "4");
+        assert_eq!(matches[1].ingredient_name, "pommes");
     }
 }
