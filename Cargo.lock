@@ -1216,6 +1216,7 @@ dependencies = [
  "fluent-bundle 0.15.3",
  "fluent-resmgr",
  "image",
+ "lazy_static",
  "leptess",
  "libsqlite3-sys",
  "log",
