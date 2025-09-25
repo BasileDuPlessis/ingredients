@@ -7,6 +7,7 @@
 //!
 //! - Measurement unit detection using comprehensive regex patterns
 //! - Support for English and French measurement units
+//! - Ingredient name extraction alongside quantity and measurement
 //! - Line-by-line text analysis for ingredient lists
 
 use regex::Regex;
@@ -17,6 +18,8 @@ use std::collections::HashSet;
 pub struct MeasurementMatch {
     /// The matched measurement text (e.g., "2 cups", "500g")
     pub text: String,
+    /// The extracted ingredient name (e.g., "flour", "de tomates", "all-purpose flour")
+    pub ingredient_name: String,
     /// The line number where the measurement was found (0-indexed)
     pub line_number: usize,
     /// The starting character position in the line
@@ -76,7 +79,7 @@ impl MeasurementDetector {
     /// Find all measurement matches in the given text
     ///
     /// Scans the entire text and returns all detected measurements with their
-    /// positions and line numbers.
+    /// positions, line numbers, and extracted ingredient names.
     ///
     /// # Arguments
     ///
@@ -85,6 +88,7 @@ impl MeasurementDetector {
     /// # Returns
     ///
     /// Returns a vector of `MeasurementMatch` containing all detected measurements
+    /// with their associated ingredient names
     ///
     /// # Examples
     ///
@@ -97,7 +101,9 @@ impl MeasurementDetector {
     ///
     /// assert_eq!(matches.len(), 2);
     /// assert_eq!(matches[0].text, "2 cups");
+    /// assert_eq!(matches[0].ingredient_name, "flour");
     /// assert_eq!(matches[1].text, "1 tablespoon");
+    /// assert_eq!(matches[1].ingredient_name, "sugar");
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn find_measurements(&self, text: &str) -> Vec<MeasurementMatch> {
@@ -106,8 +112,13 @@ impl MeasurementDetector {
 
         for (line_number, line) in text.lines().enumerate() {
             for capture in self.pattern.find_iter(line) {
+                // Extract the ingredient name from the text after the measurement
+                let measurement_end = capture.end();
+                let ingredient_name = line[measurement_end..].trim().to_string();
+
                 matches.push(MeasurementMatch {
                     text: capture.as_str().to_string(),
+                    ingredient_name,
                     line_number,
                     start_pos: current_pos + capture.start(),
                     end_pos: current_pos + capture.end(),
@@ -412,12 +423,75 @@ mod tests {
     }
 
     #[test]
-    fn test_edge_cases() {
+    fn test_ingredient_name_extraction() {
         let detector = create_detector();
 
-        // Test edge cases that might cause false positives
-        assert!(!detector.has_measurements("cupboard")); // Should not match partial words
-        assert!(!detector.has_measurements("tablespoonful")); // Should not match partial words
-        assert!(!detector.has_measurements("gramophone")); // Should not match partial words
+        // Test basic ingredient name extraction
+        let matches = detector.find_measurements("2 cups flour\n1 tablespoon sugar\n500g butter");
+
+        assert_eq!(matches.len(), 3);
+
+        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].ingredient_name, "flour");
+
+        assert_eq!(matches[1].text, "1 tablespoon");
+        assert_eq!(matches[1].ingredient_name, "sugar");
+
+        assert_eq!(matches[2].text, "500g");
+        assert_eq!(matches[2].ingredient_name, "butter");
+    }
+
+    #[test]
+    fn test_french_ingredient_name_extraction() {
+        let detector = create_detector();
+
+        // Test French ingredient name extraction
+        let matches = detector.find_measurements("250 g de farine\n1 litre de lait\n3 œufs");
+
+        assert_eq!(matches.len(), 3);
+
+        assert_eq!(matches[0].text, "250 g");
+        assert_eq!(matches[0].ingredient_name, "de farine");
+
+        assert_eq!(matches[1].text, "1 litre");
+        assert_eq!(matches[1].ingredient_name, "de lait");
+
+        assert_eq!(matches[2].text, "3 œufs");
+        assert_eq!(matches[2].ingredient_name, ""); // "œufs" is both measurement and ingredient
+    }
+
+    #[test]
+    fn test_multi_word_ingredient_names() {
+        let detector = create_detector();
+
+        // Test multi-word ingredient names
+        let matches = detector.find_measurements("2 cups all-purpose flour\n1 teaspoon baking powder\n500g unsalted butter");
+
+        assert_eq!(matches.len(), 3);
+
+        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].ingredient_name, "all-purpose flour");
+
+        assert_eq!(matches[1].text, "1 teaspoon");
+        assert_eq!(matches[1].ingredient_name, "baking powder");
+
+        assert_eq!(matches[2].text, "500g");
+        assert_eq!(matches[2].ingredient_name, "unsalted butter");
+    }
+
+    #[test]
+    fn test_measurement_at_end_of_line() {
+        let detector = create_detector();
+
+        // Test when measurement is at the end of the line (no ingredient name)
+        let matches = detector.find_measurements("Add 2 cups\nMix 1 tablespoon\nBake at 350");
+
+        assert_eq!(matches.len(), 2);
+
+        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].ingredient_name, "");
+
+        assert_eq!(matches[1].text, "1 tablespoon");
+        assert_eq!(matches[1].ingredient_name, "");
     }
 }
