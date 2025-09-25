@@ -4,7 +4,7 @@
 //! measurements and ingredients from recipe text. It shows various configuration
 //! options and real-world recipe parsing scenarios.
 
-use ingredients::text_processing::{MeasurementDetector, MeasurementConfig};
+use ingredients::text_processing::{MeasurementConfig, MeasurementDetector};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("🍳 Recipe Measurement Parser Example");
@@ -37,11 +37,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Found {} measurements:", matches.len());
     for (i, measurement) in matches.iter().enumerate() {
-        println!("  {}. {} → \"{}\" (line {})",
-                i + 1,
-                measurement.text,
-                measurement.ingredient_name,
-                measurement.line_number + 1);
+        println!(
+            "  {}. {} → \"{}\" (line {})",
+            i + 1,
+            measurement.text,
+            measurement.ingredient_name,
+            measurement.line_number + 1
+        );
     }
 
     println!("\n");
@@ -74,13 +76,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let french_matches = french_detector.find_measurements(french_recipe);
 
-    println!("Found {} measurements (with post-processing):", french_matches.len());
+    println!(
+        "Found {} measurements (with post-processing):",
+        french_matches.len()
+    );
     for (i, measurement) in french_matches.iter().enumerate() {
-        println!("  {}. {} → \"{}\" (line {})",
-                i + 1,
-                measurement.text,
-                measurement.ingredient_name,
-                measurement.line_number + 1);
+        println!(
+            "  {}. {} → \"{}\" (line {})",
+            i + 1,
+            measurement.text,
+            measurement.ingredient_name,
+            measurement.line_number + 1
+        );
     }
 
     println!("\n");
@@ -90,7 +97,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("------------------------------------------");
 
     let volume_only_detector = MeasurementDetector::with_pattern(
-        r"(?i)\b\d*\.?\d+\s+(?:cup(?:s)?|tablespoon(?:s)?|teaspoon(?:s)?|pint(?:s)?|quart(?:s)?|gallon(?:s)?|fluid\s+ounce(?:s)?|fl\s+oz)\b"
+        r"(?i)\b\d*\.?\d+\s+(?:cup(?:s)?|tablespoon(?:s)?|teaspoon(?:s)?|pint(?:s)?|quart(?:s)?|gallon(?:s)?|fluid\s+ounce(?:s)?|fl\s+oz)\b",
     )?;
 
     let mixed_recipe = r#"
@@ -105,12 +112,17 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let volume_matches = volume_only_detector.find_measurements(mixed_recipe);
 
-    println!("Found {} volume measurements (custom pattern):", volume_matches.len());
+    println!(
+        "Found {} volume measurements (custom pattern):",
+        volume_matches.len()
+    );
     for (i, measurement) in volume_matches.iter().enumerate() {
-        println!("  {}. {} → \"{}\"",
-                i + 1,
-                measurement.text,
-                measurement.ingredient_name);
+        println!(
+            "  {}. {} → \"{}\"",
+            i + 1,
+            measurement.text,
+            measurement.ingredient_name
+        );
     }
 
     println!("\n");
@@ -131,13 +143,18 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     let complex_matches = complex_detector.find_measurements(complex_recipe);
 
-    println!("Found {} measurements in complex recipe:", complex_matches.len());
+    println!(
+        "Found {} measurements in complex recipe:",
+        complex_matches.len()
+    );
     for (i, measurement) in complex_matches.iter().enumerate() {
-        println!("  {}. {} → \"{}\" (line {})",
-                i + 1,
-                measurement.text,
-                measurement.ingredient_name,
-                measurement.line_number + 1);
+        println!(
+            "  {}. {} → \"{}\" (line {})",
+            i + 1,
+            measurement.text,
+            measurement.ingredient_name,
+            measurement.line_number + 1
+        );
     }
 
     println!("\n");
@@ -181,18 +198,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
 
     let no_pp_detector = MeasurementDetector::with_config(no_postprocess_config)?;
-    let comparison_text = "2 cups of all-purpose flour\n1 tablespoon of olive oil\n500g of dark chocolate";
+    let comparison_text =
+        "2 cups of all-purpose flour\n1 tablespoon of olive oil\n500g of dark chocolate";
 
     println!("With post-processing:");
     let with_pp = basic_detector.find_measurements(comparison_text);
     for measurement in &with_pp {
-        println!("  {} → \"{}\"", measurement.text, measurement.ingredient_name);
+        println!(
+            "  {} → \"{}\"",
+            measurement.text, measurement.ingredient_name
+        );
     }
 
     println!("\nWithout post-processing:");
     let without_pp = no_pp_detector.find_measurements(comparison_text);
     for measurement in &without_pp {
-        println!("  {} → \"{}\"", measurement.text, measurement.ingredient_name);
+        println!(
+            "  {} → \"{}\"",
+            measurement.text, measurement.ingredient_name
+        );
     }
 
     println!("\n");

@@ -114,6 +114,25 @@ cargo test                    # Run test suite
 - **Instance Caching**: OCR instances reused to reduce initialization time
 - **Format Pre-validation**: Quick rejection of unsupported/oversized files
 
+## Linting, Formatting, and Code Review Standards
+- **Clippy Enforcement**: All code must pass `cargo clippy` with no warnings. Use the default Clippy lints and fix all issues before submitting code or pull requests.
+    - For new code, run:  
+      ```bash
+      cargo clippy --all-targets --all-features -- -D warnings
+      ```
+    - If you encounter Clippy lints that are not applicable, document and justify any allowed exceptions with inline comments.
+
+- **Rustfmt Enforcement**: All code must be formatted with `rustfmt` using the default Rust style.
+    - Run:  
+      ```bash
+      cargo fmt --all -- --check
+      ```
+    - CI and all contributors must ensure code formatting matches the output of `cargo fmt`.
+
+- **CI Integration**: PRs may be rejected if they do not pass both Clippy and formatting checks.
+- **Copilot and AI Contributions**: AI-generated code must always meet the above lint and formatting standards, without exception.
+
+
 ## Common Development Tasks
 
 ### Adding New Features

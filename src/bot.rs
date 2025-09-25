@@ -97,7 +97,8 @@ async fn download_and_process_image(
                     );
 
                     // Process the extracted text to find ingredients with measurements
-                    let processed_result = process_ingredients_from_text(&extracted_text, language_code);
+                    let processed_result =
+                        process_ingredients_from_text(&extracted_text, language_code);
 
                     // Send the processed ingredient list back to the user
                     bot.send_message(chat_id, &processed_result).await?;
@@ -162,16 +163,21 @@ async fn download_and_process_image(
 ///
 /// Returns a formatted string with detected ingredients and measurements
 fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&str>) -> String {
-    info!("Processing extracted text for ingredients: {} characters", extracted_text.len());
+    info!(
+        "Processing extracted text for ingredients: {} characters",
+        extracted_text.len()
+    );
 
     // Create measurement detector with default configuration
     let detector = match MeasurementDetector::new() {
         Ok(detector) => detector,
         Err(e) => {
             error!("Failed to create measurement detector: {}", e);
-            return format!("❌ {}\n\n{}",
+            return format!(
+                "❌ {}\n\n{}",
                 t_lang("error-processing-failed", language_code),
-                t_lang("error-try-again", language_code));
+                t_lang("error-try-again", language_code)
+            );
         }
     };
 
@@ -180,10 +186,12 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
 
     if matches.is_empty() {
         info!("No measurements found in extracted text");
-        return format!("📝 {}\n\n{}\n\n```\n{}\n```",
+        return format!(
+            "📝 {}\n\n{}\n\n```\n{}\n```",
             t_lang("no-ingredients-found", language_code),
             t_lang("no-ingredients-suggestion", language_code),
-            extracted_text);
+            extracted_text
+        );
     }
 
     info!("Found {} measurement matches", matches.len());
@@ -195,7 +203,7 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
     for measurement_match in &matches {
         ingredients_by_line
             .entry(measurement_match.line_number)
-            .or_insert_with(Vec::new)
+            .or_default()
             .push(measurement_match);
     }
 
@@ -208,9 +216,11 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
 
     for &line_num in &sorted_lines {
         if let Some(line_matches) = ingredients_by_line.get(line_num) {
-            result.push_str(&format!("📋 **{} {}:**\n",
+            result.push_str(&format!(
+                "📋 **{} {}:**\n",
                 t_lang("line", language_code),
-                line_num + 1)); // 1-indexed for user display
+                line_num + 1
+            )); // 1-indexed for user display
 
             for measurement_match in line_matches {
                 let ingredient_display = if measurement_match.ingredient_name.is_empty() {
@@ -219,23 +229,28 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
                     measurement_match.ingredient_name.clone()
                 };
 
-                result.push_str(&format!("   • **{}** → {}\n",
-                    measurement_match.text,
-                    ingredient_display));
+                result.push_str(&format!(
+                    "   • **{}** → {}\n",
+                    measurement_match.text, ingredient_display
+                ));
             }
-            result.push_str("\n");
+            result.push('\n');
         }
     }
 
     // Add summary
-    result.push_str(&format!("📊 **{}:** {}\n\n",
+    result.push_str(&format!(
+        "📊 **{}:** {}\n\n",
         t_lang("total-ingredients", language_code),
-        matches.len()));
+        matches.len()
+    ));
 
     // Add the original extracted text for reference
-    result.push_str(&format!("📄 {}\n```\n{}\n```",
+    result.push_str(&format!(
+        "📄 {}\n```\n{}\n```",
         t_lang("original-text", language_code),
-        extracted_text));
+        extracted_text
+    ));
 
     result
 }

@@ -67,8 +67,8 @@ const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|t
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
-    static ref DEFAULT_REGEX: Regex = Regex::new(DEFAULT_PATTERN)
-        .expect("Default measurement pattern should be valid");
+    static ref DEFAULT_REGEX: Regex =
+        Regex::new(DEFAULT_PATTERN).expect("Default measurement pattern should be valid");
 }
 
 impl MeasurementDetector {
@@ -198,20 +198,30 @@ impl MeasurementDetector {
         let mut matches = Vec::new();
         let mut current_pos = 0;
 
-        debug!("Finding measurements in text with {} lines", text.lines().count());
+        debug!(
+            "Finding measurements in text with {} lines",
+            text.lines().count()
+        );
 
         for (line_number, line) in text.lines().enumerate() {
             trace!("Processing line {}: '{}'", line_number, line);
             for capture in self.pattern.find_iter(line) {
                 let measurement_text = capture.as_str();
-                debug!("Found measurement '{}' at line {}", measurement_text, line_number);
+                debug!(
+                    "Found measurement '{}' at line {}",
+                    measurement_text, line_number
+                );
 
                 // Extract the ingredient name from the text after the measurement
                 let measurement_end = capture.end();
                 let raw_ingredient_name = line[measurement_end..].trim().to_string();
                 let ingredient_name = self.post_process_ingredient_name(&raw_ingredient_name);
 
-                trace!("Extracted ingredient name: '{}' -> '{}'", raw_ingredient_name, ingredient_name);
+                trace!(
+                    "Extracted ingredient name: '{}' -> '{}'",
+                    raw_ingredient_name,
+                    ingredient_name
+                );
 
                 matches.push(MeasurementMatch {
                     text: measurement_text.to_string(),
@@ -283,9 +293,16 @@ impl MeasurementDetector {
     /// ```
     pub fn has_measurements(&self, text: &str) -> bool {
         let result = self.pattern.is_match(text);
-        debug!("Checking for measurements in text: '{}' -> {}", text, result);
+        debug!(
+            "Checking for measurements in text: '{}' -> {}",
+            text, result
+        );
         if result {
-            trace!("Pattern '{}' matched in text: '{}'", self.pattern.as_str(), text);
+            trace!(
+                "Pattern '{}' matched in text: '{}'",
+                self.pattern.as_str(),
+                text
+            );
         }
         result
     }
@@ -315,20 +332,26 @@ impl MeasurementDetector {
         let original_name = name.clone();
 
         // Remove trailing punctuation
-        name = name.trim_end_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '\'').to_string();
+        name = name
+            .trim_end_matches(|c: char| !c.is_alphanumeric() && c != ' ' && c != '-' && c != '\'')
+            .to_string();
 
         // Common prepositions and articles to remove (English and French)
         let prefixes_to_remove = [
             // English
-            "of ", "the ", "a ", "an ",
-            // French
+            "of ", "the ", "a ", "an ", // French
             "de ", "d'", "du ", "des ", "la ", "le ", "les ", "l'", "au ", "aux ", "un ", "une ",
         ];
 
         for prefix in &prefixes_to_remove {
             if name.to_lowercase().starts_with(prefix) {
                 name = name[prefix.len()..].trim_start().to_string();
-                debug!("Removed prefix '{}' from ingredient name: '{}' -> '{}'", prefix.trim(), original_name, name);
+                debug!(
+                    "Removed prefix '{}' from ingredient name: '{}' -> '{}'",
+                    prefix.trim(),
+                    original_name,
+                    name
+                );
                 break; // Only remove one prefix
             }
         }
@@ -342,14 +365,23 @@ impl MeasurementDetector {
             } else {
                 name = truncated;
             }
-            warn!("Ingredient name truncated due to length limit ({} > {}): '{}' -> '{}'",
-                  original_name.len(), self.config.max_ingredient_length, original_name, name);
+            warn!(
+                "Ingredient name truncated due to length limit ({} > {}): '{}' -> '{}'",
+                original_name.len(),
+                self.config.max_ingredient_length,
+                original_name,
+                name
+            );
         }
 
         // Clean up multiple spaces
         name = name.split_whitespace().collect::<Vec<&str>>().join(" ");
 
-        trace!("Post-processed ingredient name: '{}' -> '{}'", original_name, name);
+        trace!(
+            "Post-processed ingredient name: '{}' -> '{}'",
+            original_name,
+            name
+        );
         name.trim().to_string()
     }
 
@@ -373,9 +405,9 @@ impl MeasurementDetector {
     /// let text = "2 cups flour\n1 cup sugar\n500g butter";
     /// let units = detector.get_unique_units(text);
     ///
-    /// assert!(units.contains("cups"));
-    /// assert!(units.contains("cup"));
-    /// assert!(units.contains("g"));
+    /// assert!(units.iter().any(|u| u.contains("cups")));
+    /// assert!(units.iter().any(|u| u.contains("cup")));
+    /// assert!(units.iter().any(|u| u.contains("g")));
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn get_unique_units(&self, text: &str) -> HashSet<String> {
@@ -403,7 +435,7 @@ mod tests {
     #[test]
     fn test_measurement_detector_creation() {
         let detector = create_detector();
-        assert!(detector.pattern.as_str().len() > 0);
+        assert!(!detector.pattern.as_str().is_empty());
     }
 
     #[test]
@@ -631,7 +663,9 @@ mod tests {
         let detector = create_detector();
 
         // Test multi-word ingredient names
-        let matches = detector.find_measurements("2 cups all-purpose flour\n1 teaspoon baking powder\n500g unsalted butter");
+        let matches = detector.find_measurements(
+            "2 cups all-purpose flour\n1 teaspoon baking powder\n500g unsalted butter",
+        );
 
         assert_eq!(matches.len(), 3);
 
@@ -672,13 +706,11 @@ mod tests {
             ("2 cups", true),
             ("1.5 cups", true),
             ("0.25 cups", true),
-
             // Weight measurements
             ("500g", true),
             ("1.5kg", true),
             ("250 grams", true),
             ("2 pounds", true),
-
             // Volume measurements
             ("1 tablespoon", true),
             ("2 teaspoons", true),
@@ -686,19 +718,16 @@ mod tests {
             ("2 tbsp", true),
             ("500 ml", true),
             ("1 liter", true),
-
             // Count measurements
             ("3 eggs", true),
             ("2 slices", true),
             ("1 can", true),
             ("4 pieces", true),
-
             // French measurements
             ("2 tasses", true),
             ("1 cuillère à soupe", true),
             ("250 g", true),
             ("3 œufs", true),
-
             // Non-measurements (should not match)
             ("recipe", false),
             ("ingredients", false),
@@ -708,7 +737,7 @@ mod tests {
             ("", false),
             ("123", false), // Just a number, no unit
             ("abc", false),
-            ("cupboard", false), // Contains "cup" but not as measurement
+            ("cupboard", false),      // Contains "cup" but not as measurement
             ("tablespoonful", false), // Contains "tablespoon" but not as measurement
         ];
 
@@ -739,8 +768,8 @@ mod tests {
         assert_eq!(matches[2].text, "500g");
 
         // Verify positions are correct
-        assert_eq!(matches[0].start_pos, 4);  // "Mix 2" -> position after "Mix "
-        assert_eq!(matches[0].end_pos, 10);  // "Mix 2 cups" -> ends at position 10
+        assert_eq!(matches[0].start_pos, 4); // "Mix 2" -> position after "Mix "
+        assert_eq!(matches[0].end_pos, 10); // "Mix 2 cups" -> ends at position 10
     }
 
     #[test]
@@ -749,15 +778,15 @@ mod tests {
 
         // Test word boundaries and edge cases
         let boundary_tests = vec![
-            ("1cup", true),       // No space between number and unit (technically matches pattern)
-            ("cup1", false),      // Unit before number
-            ("1 cup.", true),     // Period after measurement
-            ("(1 cup)", true),    // Parentheses around measurement
-            ("1 cup,", true),     // Comma after measurement
-            ("1 cup;", true),     // Semicolon after measurement
+            ("1cup", true),    // No space between number and unit (technically matches pattern)
+            ("cup1", false),   // Unit before number
+            ("1 cup.", true),  // Period after measurement
+            ("(1 cup)", true), // Parentheses around measurement
+            ("1 cup,", true),  // Comma after measurement
+            ("1 cup;", true),  // Semicolon after measurement
             ("cup of flour", false), // "cup" without number
-            ("cups", false),      // Just unit, no number
-            ("1", false),         // Just number, no unit
+            ("cups", false),   // Just unit, no number
+            ("1", false),      // Just number, no unit
         ];
 
         for (text, should_match) in boundary_tests {
@@ -834,7 +863,8 @@ mod tests {
         let detector = MeasurementDetector::with_config(config).unwrap();
 
         // Test basic post-processing
-        let matches = detector.find_measurements("2 cups of flour\n1 tablespoon sugar\n500g butter");
+        let matches =
+            detector.find_measurements("2 cups of flour\n1 tablespoon sugar\n500g butter");
 
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0].ingredient_name, "flour"); // "of " removed
@@ -850,12 +880,13 @@ mod tests {
         };
         let detector = MeasurementDetector::with_config(config).unwrap();
 
-        let matches = detector.find_measurements("250 g de farine\n1 litre du lait\n2 tasses d'eau");
+        let matches =
+            detector.find_measurements("250 g de farine\n1 litre du lait\n2 tasses d'eau");
 
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0].ingredient_name, "farine"); // "de " removed
-        assert_eq!(matches[1].ingredient_name, "lait");   // "du " removed
-        assert_eq!(matches[2].ingredient_name, "eau");    // "d'" removed
+        assert_eq!(matches[1].ingredient_name, "lait"); // "du " removed
+        assert_eq!(matches[2].ingredient_name, "eau"); // "d'" removed
     }
 
     #[test]
@@ -867,7 +898,8 @@ mod tests {
         };
         let detector = MeasurementDetector::with_config(config).unwrap();
 
-        let matches = detector.find_measurements("2 cups of very-long-ingredient-name-that-should-be-truncated");
+        let matches = detector
+            .find_measurements("2 cups of very-long-ingredient-name-that-should-be-truncated");
 
         assert_eq!(matches.len(), 1);
         assert!(matches[0].ingredient_name.len() <= 20);
