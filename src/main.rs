@@ -11,6 +11,7 @@ mod bot;
 mod db;
 mod localization;
 mod ocr;
+mod text_processing;
 
 #[tokio::main]
 async fn main() -> Result<()> {

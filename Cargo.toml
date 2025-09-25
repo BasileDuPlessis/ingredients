@@ -21,3 +21,4 @@ fluent = "0.16" # Internationalization library
 fluent-bundle = "0.15" # Fluent bundle for message management
 fluent-resmgr = "0.0.4" # Resource manager for fluent
 unic-langid = "0.9" # Language identifier support
+regex = "1.10" # Regular expressions for text processing
