@@ -47,7 +47,7 @@ impl MeasurementDetector {
     pub fn new() -> Result<Self, regex::Error> {
         // Comprehensive regex pattern for measurement units
         // This pattern matches numbers followed by units, or units alone
-        let pattern_str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?|egg(?:s)?)\b"#;
+        let pattern_str = r#"(?i)\b\d*\.?\d+\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?|egg(?:s)?|œuf(?:s)?)\b"#;
 
         let pattern = Regex::new(pattern_str)?;
         Ok(Self { pattern })
@@ -291,6 +291,36 @@ mod tests {
         assert!(detector.has_measurements("1 cuillère à soupe de sucre"));
         assert!(detector.has_measurements("500 g de beurre"));
         assert!(detector.has_measurements("1 kg de tomates"));
+    }
+
+    #[test]
+    fn test_comprehensive_french_measurements() {
+        let detector = create_detector();
+
+        // Test volume measurements
+        assert!(detector.has_measurements("2 tasses de lait"));
+        assert!(detector.has_measurements("1 cuillère à café de sel"));
+        assert!(detector.has_measurements("3 cuillères à soupe d'huile"));
+        assert!(detector.has_measurements("250 ml d'eau"));
+        assert!(detector.has_measurements("1 litre de jus"));
+
+        // Test weight measurements
+        assert!(detector.has_measurements("500 grammes de sucre"));
+        assert!(detector.has_measurements("1 kilogramme de pommes"));
+        assert!(detector.has_measurements("200 g de chocolat"));
+
+        // Test count measurements
+        assert!(detector.has_measurements("3 œufs"));
+        assert!(detector.has_measurements("2 tranches de pain"));
+        assert!(detector.has_measurements("1 boîte de conserve"));
+        assert!(detector.has_measurements("4 morceaux de poulet"));
+        assert!(detector.has_measurements("1 sachet de levure"));
+        assert!(detector.has_measurements("2 paquets de pâtes"));
+        assert!(detector.has_measurements("1 poignée d'amandes"));
+        assert!(detector.has_measurements("3 gousses d'ail"));
+        assert!(detector.has_measurements("1 brin de persil"));
+        assert!(detector.has_measurements("2 feuilles de laurier"));
+        assert!(detector.has_measurements("1 bouquet de thym"));
     }
 
     #[test]
