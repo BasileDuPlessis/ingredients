@@ -1,4 +1,7 @@
 use anyhow::Result;
+use ingredients::bot;
+use ingredients::db;
+use ingredients::localization;
 use log::info;
 use rusqlite::Connection;
 use std::env;
@@ -6,12 +9,6 @@ use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
 use tokio::sync::Mutex;
-
-mod bot;
-mod db;
-mod localization;
-mod ocr;
-mod text_processing;
 
 #[tokio::main]
 async fn main() -> Result<()> {

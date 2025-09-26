@@ -14,12 +14,18 @@ use crate::localization::{t_args_lang, t_lang};
 // Import text processing
 use crate::text_processing::{MeasurementDetector, MeasurementMatch};
 
+// Import OCR types
+use crate::circuit_breaker::CircuitBreaker;
+use crate::instance_manager::OcrInstanceManager;
+use crate::ocr_config::OcrConfig;
+use crate::ocr_errors::OcrError;
+
 // Create OCR configuration with default settings
-static OCR_CONFIG: LazyLock<crate::ocr::OcrConfig> = LazyLock::new(crate::ocr::OcrConfig::default);
-static OCR_INSTANCE_MANAGER: LazyLock<crate::ocr::OcrInstanceManager> =
-    LazyLock::new(crate::ocr::OcrInstanceManager::default);
-static CIRCUIT_BREAKER: LazyLock<crate::ocr::CircuitBreaker> =
-    LazyLock::new(|| crate::ocr::CircuitBreaker::new(OCR_CONFIG.recovery.clone()));
+static OCR_CONFIG: LazyLock<OcrConfig> = LazyLock::new(OcrConfig::default);
+static OCR_INSTANCE_MANAGER: LazyLock<OcrInstanceManager> =
+    LazyLock::new(OcrInstanceManager::default);
+static CIRCUIT_BREAKER: LazyLock<CircuitBreaker> =
+    LazyLock::new(|| CircuitBreaker::new(OCR_CONFIG.recovery.clone()));
 
 async fn download_file(bot: &Bot, file_id: FileId) -> Result<String> {
     let file = bot.get_file(file_id).await?;
@@ -111,23 +117,23 @@ async fn download_and_process_image(
 
                 // Provide more specific error messages based on the error type
                 let error_message = match &e {
-                    crate::ocr::OcrError::Validation(msg) => {
+                    OcrError::Validation(msg) => {
                         t_args_lang("error-validation", &[("msg", msg)], language_code)
                     }
-                    crate::ocr::OcrError::ImageLoad(_) => t_lang("error-image-load", language_code),
-                    crate::ocr::OcrError::Initialization(_) => {
+                    OcrError::ImageLoad(_) => t_lang("error-image-load", language_code),
+                    OcrError::Initialization(_) => {
                         t_lang("error-ocr-initialization", language_code)
                     }
-                    crate::ocr::OcrError::Extraction(_) => {
+                    OcrError::Extraction(_) => {
                         t_lang("error-ocr-extraction", language_code)
                     }
-                    crate::ocr::OcrError::Timeout(msg) => {
+                    OcrError::Timeout(msg) => {
                         t_args_lang("error-ocr-timeout", &[("msg", msg)], language_code)
                     }
-                    crate::ocr::OcrError::_InstanceCorruption(_) => {
+                    OcrError::_InstanceCorruption(_) => {
                         t_lang("error-ocr-corruption", language_code)
                     }
-                    crate::ocr::OcrError::_ResourceExhaustion(_) => {
+                    OcrError::_ResourceExhaustion(_) => {
                         t_lang("error-ocr-exhaustion", language_code)
                     }
                 };
@@ -466,9 +472,9 @@ mod tests {
     use tokio::sync::Mutex;
 
     // Import types from the ocr module for testing
-    use crate::ocr::{
-        CircuitBreaker, FormatSizeLimits, OcrConfig, OcrInstanceManager, RecoveryConfig,
-    };
+    use crate::circuit_breaker::CircuitBreaker;
+    use crate::ocr_config::{FormatSizeLimits, OcrConfig, RecoveryConfig};
+    use crate::instance_manager::OcrInstanceManager;
 
     /// Test static configuration initialization
     #[test]
@@ -521,11 +527,11 @@ mod tests {
     #[test]
     fn test_error_message_formatting() {
         let validation_error =
-            crate::ocr::OcrError::Validation("Test validation error".to_string());
+            OcrError::Validation("Test validation error".to_string());
         let display_msg = format!("{}", validation_error);
         assert_eq!(display_msg, "Validation error: Test validation error");
 
-        let timeout_error = crate::ocr::OcrError::Timeout("Test timeout".to_string());
+        let timeout_error = OcrError::Timeout("Test timeout".to_string());
         let display_msg = format!("{}", timeout_error);
         assert_eq!(display_msg, "Timeout error: Test timeout");
     }
@@ -686,11 +692,11 @@ mod tests {
     /// Test that all error variants can be created
     #[test]
     fn test_error_variants_creation() {
-        let validation_err = crate::ocr::OcrError::Validation("test".to_string());
-        let init_err = crate::ocr::OcrError::Initialization("test".to_string());
-        let load_err = crate::ocr::OcrError::ImageLoad("test".to_string());
-        let extract_err = crate::ocr::OcrError::Extraction("test".to_string());
-        let timeout_err = crate::ocr::OcrError::Timeout("test".to_string());
+        let validation_err = OcrError::Validation("test".to_string());
+        let init_err = OcrError::Initialization("test".to_string());
+        let load_err = OcrError::ImageLoad("test".to_string());
+        let extract_err = OcrError::Extraction("test".to_string());
+        let timeout_err = OcrError::Timeout("test".to_string());
 
         // Test that all variants can be formatted
         assert!(format!("{}", validation_err).contains("Validation error"));
