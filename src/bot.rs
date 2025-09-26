@@ -124,9 +124,7 @@ async fn download_and_process_image(
                     OcrError::Initialization(_) => {
                         t_lang("error-ocr-initialization", language_code)
                     }
-                    OcrError::Extraction(_) => {
-                        t_lang("error-ocr-extraction", language_code)
-                    }
+                    OcrError::Extraction(_) => t_lang("error-ocr-extraction", language_code),
                     OcrError::Timeout(msg) => {
                         t_args_lang("error-ocr-timeout", &[("msg", msg)], language_code)
                     }
@@ -473,8 +471,8 @@ mod tests {
 
     // Import types from the ocr module for testing
     use crate::circuit_breaker::CircuitBreaker;
-    use crate::ocr_config::{FormatSizeLimits, OcrConfig, RecoveryConfig};
     use crate::instance_manager::OcrInstanceManager;
+    use crate::ocr_config::{FormatSizeLimits, OcrConfig, RecoveryConfig};
 
     /// Test static configuration initialization
     #[test]
@@ -526,8 +524,7 @@ mod tests {
     /// Test error message formatting
     #[test]
     fn test_error_message_formatting() {
-        let validation_error =
-            OcrError::Validation("Test validation error".to_string());
+        let validation_error = OcrError::Validation("Test validation error".to_string());
         let display_msg = format!("{}", validation_error);
         assert_eq!(display_msg, "Validation error: Test validation error");
 

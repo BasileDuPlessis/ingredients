@@ -90,7 +90,10 @@ pub fn validate_image_path(image_path: &str, config: &crate::ocr_config::OcrConf
 }
 
 /// Enhanced validation with format-specific size limits and progressive validation
-pub fn validate_image_with_format_limits(image_path: &str, config: &crate::ocr_config::OcrConfig) -> Result<()> {
+pub fn validate_image_with_format_limits(
+    image_path: &str,
+    config: &crate::ocr_config::OcrConfig,
+) -> Result<()> {
     // First, perform basic validation
     validate_image_path(image_path, config)?;
 
@@ -472,12 +475,15 @@ async fn perform_ocr_extraction(
         let extracted_text = {
             let mut tess = instance.lock().unwrap();
             // Set the image for OCR processing
-            tess.set_image(image_path)
-                .map_err(|e| crate::ocr_errors::OcrError::ImageLoad(format!("Failed to load image for OCR: {e}")))?;
+            tess.set_image(image_path).map_err(|e| {
+                crate::ocr_errors::OcrError::ImageLoad(format!("Failed to load image for OCR: {e}"))
+            })?;
 
             // Extract text from the image
             tess.get_utf8_text().map_err(|e| {
-                crate::ocr_errors::OcrError::Extraction(format!("Failed to extract text from image: {e}"))
+                crate::ocr_errors::OcrError::Extraction(format!(
+                    "Failed to extract text from image: {e}"
+                ))
             })?
         };
 

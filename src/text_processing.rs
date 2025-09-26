@@ -608,5 +608,3 @@ impl MeasurementDetector {
         self.pattern.as_str()
     }
 }
-
-
