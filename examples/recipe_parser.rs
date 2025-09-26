@@ -2,7 +2,9 @@
 //!
 //! This example demonstrates how to use the `text_processing` module to extract
 //! measurements and ingredients from recipe text. It shows various configuration
-//! options and real-world recipe parsing scenarios.
+//! options and real-world recipe parsing scenarios, including support for
+//! quantity-only ingredients (e.g., "6 oeufs", "4 pommes") that don't have
+//! measurement units.
 
 use ingredients::text_processing::{MeasurementConfig, MeasurementDetector};
 

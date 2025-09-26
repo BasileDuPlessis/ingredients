@@ -7,6 +7,7 @@
 //!
 //! - Measurement unit detection using comprehensive regex patterns
 //! - Support for English and French measurement units
+//! - **Quantity-only ingredient support**: Recognizes ingredients with quantities but no units (e.g., "6 oeufs", "4 pommes")
 //! - Ingredient name extraction alongside quantity and measurement
 //! - Line-by-line text analysis for ingredient lists
 
@@ -278,10 +279,15 @@ impl MeasurementDetector {
     /// use ingredients::text_processing::MeasurementDetector;
     ///
     /// let detector = MeasurementDetector::new()?;
-    /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt\n3 sachets yeast";
+    /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt\n3 sachets yeast\n6 oeufs\n4 pommes";
     /// let measurement_lines = detector.extract_measurement_lines(text);
     ///
-    /// assert_eq!(measurement_lines.len(), 3);
+    /// assert_eq!(measurement_lines.len(), 5);
+    /// assert_eq!(measurement_lines[0], (0, "2 cups flour".to_string()));
+    /// assert_eq!(measurement_lines[1], (1, "1 tablespoon sugar".to_string()));
+    /// assert_eq!(measurement_lines[2], (3, "3 sachets yeast".to_string()));
+    /// assert_eq!(measurement_lines[3], (4, "6 oeufs".to_string()));
+    /// assert_eq!(measurement_lines[4], (5, "4 pommes".to_string()));
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn extract_measurement_lines(&self, text: &str) -> Vec<(usize, String)> {
@@ -309,7 +315,10 @@ impl MeasurementDetector {
     ///
     /// let detector = MeasurementDetector::new()?;
     /// assert!(detector.has_measurements("2 cups flour"));
+    /// assert!(detector.has_measurements("6 oeufs"));  // quantity-only ingredient
+    /// assert!(detector.has_measurements("4 pommes")); // quantity-only ingredient
     /// assert!(!detector.has_measurements("some flour"));
+    /// assert!(!detector.has_measurements("some eggs")); // plain text without quantity
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn has_measurements(&self, text: &str) -> bool {
@@ -468,12 +477,14 @@ impl MeasurementDetector {
     /// use std::collections::HashSet;
     ///
     /// let detector = MeasurementDetector::new()?;
-    /// let text = "2 cups flour\n1 cup sugar\n500g butter";
+    /// let text = "2 cups flour\n1 cup sugar\n500g butter\n6 oeufs\n4 pommes";
     /// let units = detector.get_unique_units(text);
     ///
     /// assert!(units.iter().any(|u| u.contains("cups")));
     /// assert!(units.iter().any(|u| u.contains("cup")));
     /// assert!(units.iter().any(|u| u.contains("g")));
+    /// assert!(units.iter().any(|u| u.contains("6")));  // quantity-only measurement
+    /// assert!(units.iter().any(|u| u.contains("4")));  // quantity-only measurement
     /// # Ok::<(), regex::Error>(())
     /// ```
     pub fn get_unique_units(&self, text: &str) -> HashSet<String> {
