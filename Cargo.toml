@@ -5,14 +5,13 @@ edition = "2021"
 
 [dependencies]
 teloxide = "0.17.0"
-rusqlite = "0.37.0"
+sqlx = { version = "0.8", features = [ "postgres", "runtime-tokio-native-tls", "chrono" ] }
 tokio = { version = "1.47.1", features = ["full"] }
 dotenv = "0.15.0"
 anyhow = "1.0"
 log = "0.4"
 env_logger = "0.11"
 tempfile = "3.0"
-libsqlite3-sys = "0.35"
 reqwest = { version = "0.12", features = ["json"] }
 leptess = "0.14" # Rust binding for Tesseract and Leptonica
 image = "0.24"    # For image handling if needed
@@ -23,6 +22,7 @@ fluent-resmgr = "0.0.4" # Resource manager for fluent
 unic-langid = "0.9" # Language identifier support
 regex = "1.10" # Regular expressions for text processing
 lazy_static = "1.4" # Lazy static initialization
+chrono = { version = "0.4", features = ["serde"] } # DateTime handling
 
 [[example]]
 name = "recipe_parser"

@@ -3,12 +3,11 @@ use ingredients::bot;
 use ingredients::db;
 use ingredients::localization;
 use log::info;
-use rusqlite::Connection;
+use sqlx::postgres::PgPool;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
-use tokio::sync::Mutex;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -31,14 +30,14 @@ async fn main() -> Result<()> {
 
     info!("Initializing database at: {database_url}");
 
-    // Create database connection
-    let conn = Connection::open(&database_url)?;
+    // Create database connection pool
+    let pool = PgPool::connect(&database_url).await?;
 
     // Initialize database schema
-    db::init_database_schema(&conn)?;
+    db::init_database_schema(&pool).await?;
 
-    // Wrap connection in Arc<Mutex> for sharing across async tasks
-    let shared_conn = Arc::new(Mutex::new(conn));
+    // Wrap pool in Arc for sharing across async tasks
+    let shared_pool = Arc::new(pool);
 
     // Initialize the bot with custom client configuration for better reliability
     let client = reqwest::Client::builder()
@@ -52,10 +51,10 @@ async fn main() -> Result<()> {
 
     // Set up the dispatcher with shared connection
     let handler = dptree::entry().branch(Update::filter_message().endpoint({
-        let conn = Arc::clone(&shared_conn);
+        let pool = Arc::clone(&shared_pool);
         move |bot: Bot, msg: Message| {
-            let conn = Arc::clone(&conn);
-            async move { bot::message_handler(bot, msg, conn).await }
+            let pool = Arc::clone(&pool);
+            async move { bot::message_handler(bot, msg, pool).await }
         }
     }));
 

@@ -1,7 +1,7 @@
 # Ingredients Telegram Bot - AI Coding Guidelines
 
 ## Project Overview
-This is a Telegram bot that extracts text from images using OCR (Optical Character Recognition). It processes photos and image files sent by users, extracts text using Tesseract, and stores the results in a SQLite database with full-text search capabilities.
+This is a Telegram bot that extracts text from images using OCR (Optical Character Recognition). It processes photos and image files sent by users, extracts text using Tesseract, and stores the results in a PostgreSQL database with full-text search capabilities.
 
 ## Architecture Components
 
@@ -9,13 +9,13 @@ This is a Telegram bot that extracts text from images using OCR (Optical Charact
 - **`main.rs`**: Application entry point, initializes services and starts the bot dispatcher
 - **`bot.rs`**: Telegram message handling, image download/processing, user interaction logic
 - **`ocr.rs`**: OCR processing with Tesseract, circuit breaker pattern, format validation, instance management
-- **`db.rs`**: SQLite database operations with FTS (Full-Text Search) support
+- **`db.rs`**: PostgreSQL database operations with FTS (Full-Text Search) support
 - **`localization.rs`**: Internationalization using Fluent bundles (English/French)
 
 ### Key Dependencies
 - **teloxide**: Telegram bot framework
 - **leptess**: Tesseract OCR Rust bindings
-- **rusqlite**: SQLite database access
+- **sqlx**: PostgreSQL database access
 - **fluent-bundle**: Internationalization framework
 - **tokio**: Async runtime
 - **anyhow**: Error handling
@@ -26,7 +26,7 @@ This is a Telegram bot that extracts text from images using OCR (Optical Charact
 ```bash
 # Required environment variables
 TELEGRAM_BOT_TOKEN=your_bot_token_here
-DATABASE_URL=ingredients.db
+DATABASE_URL=postgresql://username:password@localhost/ingredients
 
 # Optional
 HEALTH_PORT=8080
@@ -42,7 +42,7 @@ cargo test                    # Run test suite
 
 ### Database Management
 - Schema auto-initializes on startup via `db::init_database_schema()`
-- Uses SQLite with FTS virtual table for content search
+- - **Database Design**: PostgreSQL with tsvector for FTS, GIN indexes for performance
 - Triggers maintain FTS table synchronization
 
 ## Project-Specific Patterns & Conventions

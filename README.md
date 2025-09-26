@@ -7,7 +7,7 @@ A Telegram bot that extracts text from images using OCR (Optical Character Recog
 - **OCR Text Extraction**: Uses Tesseract OCR to extract text from images and photos
 - **Ingredient Parsing**: Automatically detects and parses measurements and ingredients from recipe text
 - **Quantity-Only Support**: Recognizes ingredients with quantities but no measurement units (e.g., "6 oeufs", "4 pommes")
-- **Full-Text Search**: SQLite FTS (Full-Text Search) for efficient content searching
+- **Full-Text Search**: PostgreSQL full-text search for efficient content searching
 - **Multilingual Support**: English and French language support with localized messages
 - **Circuit Breaker Pattern**: Protects against OCR failures with automatic recovery
 - **Database Storage**: Persistent storage of extracted text and user interactions
@@ -28,7 +28,7 @@ A Telegram bot that extracts text from images using OCR (Optical Character Recog
 ### Prerequisites
 - Rust 1.70+
 - Tesseract OCR with English and French language packs
-- SQLite3
+- PostgreSQL database
 
 ### Setup
 1. Clone the repository:
@@ -57,7 +57,7 @@ A Telegram bot that extracts text from images using OCR (Optical Character Recog
 
 ### Environment Variables
 - `TELEGRAM_BOT_TOKEN`: Your Telegram bot token from @BotFather
-- `DATABASE_URL`: SQLite database path (default: `ingredients.db`)
+- `DATABASE_URL`: PostgreSQL database connection string (e.g., `postgresql://user:pass@localhost/db`)
 - `HEALTH_PORT`: Optional health check port (default: 8080)
 
 ### OCR Configuration
@@ -103,14 +103,14 @@ Found 4 measurements:
 - **`main.rs`**: Application entry point and Telegram bot dispatcher
 - **`bot.rs`**: Message handling, image processing, and user interactions
 - **`ocr.rs`**: Tesseract OCR integration with circuit breaker pattern
-- **`db.rs`**: SQLite database operations with FTS support
+- **`db.rs`**: PostgreSQL database operations with full-text search support
 - **`text_processing.rs`**: Measurement detection and ingredient parsing
 - **`localization.rs`**: Internationalization support (English/French)
 
 ### Key Dependencies
 - `teloxide`: Telegram bot framework
 - `leptess`: Tesseract OCR Rust bindings
-- `rusqlite`: SQLite database access
+- `sqlx`: PostgreSQL database access
 - `fluent-bundle`: Internationalization framework
 - `tokio`: Async runtime
 
@@ -144,19 +144,59 @@ See the `examples/` directory for usage examples:
 
 ## Database Schema
 
-The bot uses a simple SQLite schema with FTS support:
+The bot uses a PostgreSQL schema with full-text search support:
 
 ```sql
-CREATE TABLE entries (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    telegram_id INTEGER NOT NULL,
-    content TEXT NOT NULL,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+-- Users table: Maps Telegram IDs to internal IDs and tracks language preference
+CREATE TABLE users (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT UNIQUE NOT NULL,
+    language_code VARCHAR(10) DEFAULT 'en',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
-CREATE VIRTUAL TABLE entries_fts USING fts5(
-    content, content='entries', content_rowid='id'
+-- OCR entries table: Stores full OCR text blocks for audit/traceability
+CREATE TABLE ocr_entries (
+    id SERIAL PRIMARY KEY,
+    telegram_id BIGINT NOT NULL,
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
 );
+
+-- Ingredients table: Links to users and optionally to OCR entries, stores parsed data
+CREATE TABLE ingredients (
+    id SERIAL PRIMARY KEY,
+    user_id BIGINT NOT NULL REFERENCES users(id),
+    ocr_entry_id BIGINT REFERENCES ocr_entries(id),
+    name VARCHAR(255) NOT NULL,
+    quantity DECIMAL(10,3),
+    unit VARCHAR(50),
+    raw_text TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id),
+    FOREIGN KEY (ocr_entry_id) REFERENCES ocr_entries(id)
+);
+
+-- Conversion ratios table: Allows ingredient-specific conversions (weight↔volume, etc.)
+CREATE TABLE conversion_ratios (
+    id SERIAL PRIMARY KEY,
+    ingredient_name VARCHAR(255) NOT NULL,
+    from_unit VARCHAR(50) NOT NULL,
+    to_unit VARCHAR(50) NOT NULL,
+    ratio DECIMAL(10,6) NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE(ingredient_name, from_unit, to_unit)
+);
+
+-- Indexes for performance
+CREATE INDEX ocr_entries_content_tsv_idx ON ocr_entries USING GIN (content_tsv);
+CREATE INDEX ingredients_user_id_idx ON ingredients(user_id);
+CREATE INDEX ingredients_ocr_entry_id_idx ON ingredients(ocr_entry_id);
+CREATE INDEX conversion_ratios_ingredient_name_idx ON conversion_ratios(ingredient_name);
 ```
 
 ## Contributing
@@ -182,7 +222,7 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 - Initial release with OCR text extraction and ingredient parsing
 - Support for traditional measurements (cups, grams, liters, etc.)
 - **New**: Quantity-only ingredient support (e.g., "6 oeufs", "4 pommes")
-- SQLite database with full-text search
+- PostgreSQL database with full-text search
 - English and French localization
 - Circuit breaker pattern for OCR reliability
 - Telegram bot integration</content>
