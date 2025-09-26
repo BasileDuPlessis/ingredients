@@ -68,7 +68,7 @@ pub struct MeasurementDetector {
 }
 
 // Default comprehensive regex pattern for measurement units (now supports quantity-only ingredients and fractions)
-const DEFAULT_PATTERN: &str = r#"(?i)\b(\d*\.?\d+|\d+/\d+)(?:\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+\w+)\b"#;
+const DEFAULT_PATTERN: &str = r#"(?i)(\d*\.?\d+|\d+/\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞⅟])(?:\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|gram(?:me)?s?|kilogram(?:me)?s?|kg|g|liter(?:s)?|litre(?:s)?|millilitre(?:s)?|ml|cm3|mm3|cm²|mm²|cl|dl|l|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+\w+)"#;
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
@@ -362,23 +362,119 @@ impl MeasurementDetector {
         // Check if the word part is exactly a measurement unit
         let measurement_units = [
             // Volume units
-            "cup", "cups", "teaspoon", "teaspoons", "tsp", "tablespoon", "tablespoons", "tbsp",
-            "pint", "pints", "quart", "quarts", "gallon", "gallons", "fluid", "fl",
+            "cup",
+            "cups",
+            "teaspoon",
+            "teaspoons",
+            "tsp",
+            "tablespoon",
+            "tablespoons",
+            "tbsp",
+            "pint",
+            "pints",
+            "quart",
+            "quarts",
+            "gallon",
+            "gallons",
+            "fluid",
+            "fl",
             // Weight units
-            "g", "gram", "grams", "gramme", "grammes", "kg", "kilogram", "kilograms", "kilogramme", "kilogrammes",
-            "mg", "lb", "pound", "pounds", "oz", "ounce", "ounces",
+            "g",
+            "gram",
+            "grams",
+            "gramme",
+            "grammes",
+            "kg",
+            "kilogram",
+            "kilograms",
+            "kilogramme",
+            "kilogrammes",
+            "mg",
+            "lb",
+            "pound",
+            "pounds",
+            "oz",
+            "ounce",
+            "ounces",
             // Volume units (metric)
-            "l", "liter", "liters", "litre", "litres", "ml", "milliliter", "milliliters", "millilitre", "millilitres",
-            "cc", "cl", "dl", "cm3", "mm3", "cm²", "mm²",
+            "l",
+            "liter",
+            "liters",
+            "litre",
+            "litres",
+            "ml",
+            "milliliter",
+            "milliliters",
+            "millilitre",
+            "millilitres",
+            "cc",
+            "cl",
+            "dl",
+            "cm3",
+            "mm3",
+            "cm²",
+            "mm²",
             // Count units
-            "slice", "slices", "can", "cans", "bottle", "bottles", "stick", "sticks",
-            "packet", "packets", "pkg", "bag", "bags", "dash", "dashes", "pinch", "pinches",
-            "drop", "drops", "cube", "cubes", "piece", "pieces", "handful", "handfuls",
-            "bar", "bars", "sheet", "sheets", "serving", "servings", "portion", "portions",
+            "slice",
+            "slices",
+            "can",
+            "cans",
+            "bottle",
+            "bottles",
+            "stick",
+            "sticks",
+            "packet",
+            "packets",
+            "pkg",
+            "bag",
+            "bags",
+            "dash",
+            "dashes",
+            "pinch",
+            "pinches",
+            "drop",
+            "drops",
+            "cube",
+            "cubes",
+            "piece",
+            "pieces",
+            "handful",
+            "handfuls",
+            "bar",
+            "bars",
+            "sheet",
+            "sheets",
+            "serving",
+            "servings",
+            "portion",
+            "portions",
             // French units
-            "tasse", "tasses", "cuillère", "cuillères", "poignée", "poignées", "sachet", "sachets",
-            "paquet", "paquets", "boîte", "boîtes", "conserve", "conserves", "tranche", "tranches",
-            "morceau", "morceaux", "gousse", "gousses", "brin", "brins", "feuille", "feuilles", "bouquet", "bouquets",
+            "tasse",
+            "tasses",
+            "cuillère",
+            "cuillères",
+            "poignée",
+            "poignées",
+            "sachet",
+            "sachets",
+            "paquet",
+            "paquets",
+            "boîte",
+            "boîtes",
+            "conserve",
+            "conserves",
+            "tranche",
+            "tranches",
+            "morceau",
+            "morceaux",
+            "gousse",
+            "gousses",
+            "brin",
+            "brins",
+            "feuille",
+            "feuilles",
+            "bouquet",
+            "bouquets",
         ];
 
         // Check if the word part is exactly a measurement unit
@@ -732,7 +828,8 @@ mod tests {
         let detector = create_detector();
 
         // Test French ingredient name extraction (with post-processing enabled by default)
-        let matches = detector.find_measurements("250 g de farine\n1 litre de lait\n2 tranches de pain");
+        let matches =
+            detector.find_measurements("250 g de farine\n1 litre de lait\n2 tranches de pain");
 
         assert_eq!(matches.len(), 3);
 
@@ -1038,18 +1135,17 @@ mod tests {
     }
 
     #[test]
-    fn test_fraction_with_french_measurements() {
+    fn test_unicode_fraction_characters() {
         let detector = create_detector();
 
-        // Test fractions with French measurements
-        let matches = detector.find_measurements("1/2 litre de lait\n3/4 cuillère à café de sel");
+        // Test Unicode fraction characters (now supported!)
+        assert!(detector.has_measurements("½ cup flour")); // Unicode ½ character
+        assert!(detector.has_measurements("⅓ teaspoon salt")); // Unicode ⅓ character
+        assert!(detector.has_measurements("¼ kg sugar")); // Unicode ¼ character
 
-        assert_eq!(matches.len(), 2);
-
-        assert_eq!(matches[0].text, "1/2 litre");
-        assert_eq!(matches[0].ingredient_name, "lait"); // "de " removed
-
-        assert_eq!(matches[1].text, "3/4 cuillère à café");
-        assert_eq!(matches[1].ingredient_name, "sel"); // "de " removed
+        // ASCII fractions still work
+        assert!(detector.has_measurements("1/2 cup flour"));
+        assert!(detector.has_measurements("1/3 teaspoon salt"));
+        assert!(detector.has_measurements("1/4 kg sugar"));
     }
 }

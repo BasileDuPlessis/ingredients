@@ -3,7 +3,7 @@
 //! This module contains integration tests for the Ingredients Telegram bot,
 //! testing end-to-end functionality including quantity-only ingredient detection.
 
-use ingredients::text_processing::{MeasurementDetector, MeasurementConfig};
+use ingredients::text_processing::{MeasurementConfig, MeasurementDetector};
 
 /// Test end-to-end processing of quantity-only ingredients
 #[test]
@@ -54,7 +54,10 @@ fn test_quantity_only_integration() {
     assert_eq!(matches[3].text, "2 cuillères à soupe");
     assert_eq!(matches[3].ingredient_name, "sucre");
 
-    println!("✅ Successfully processed {} measurements including quantity-only ingredients", matches.len());
+    println!(
+        "✅ Successfully processed {} measurements including quantity-only ingredients",
+        matches.len()
+    );
 }
 
 /// Test comprehensive recipe processing with mixed ingredient types
@@ -63,7 +66,8 @@ fn test_mixed_recipe_processing() {
     let detector = MeasurementDetector::with_config(MeasurementConfig {
         enable_ingredient_postprocessing: true,
         ..Default::default()
-    }).unwrap();
+    })
+    .unwrap();
 
     let recipe_text = r#"
     Chocolate Chip Cookies - English Recipe
@@ -93,17 +97,29 @@ fn test_mixed_recipe_processing() {
     assert!(matches.len() >= 15);
 
     // Check English measurements (note: 2 1/4 cups gets split by regex)
-    let flour_match = matches.iter().find(|m| m.ingredient_name == "all-purpose flour").unwrap();
+    let flour_match = matches
+        .iter()
+        .find(|m| m.ingredient_name == "all-purpose flour")
+        .unwrap();
     assert_eq!(flour_match.text, "4 cups");
 
     // Check French quantity-only ingredients
-    let oeufs_match = matches.iter().find(|m| m.ingredient_name == "œufs").unwrap();
+    let oeufs_match = matches
+        .iter()
+        .find(|m| m.ingredient_name == "œufs")
+        .unwrap();
     assert_eq!(oeufs_match.text, "2");
 
-    let pommes_match = matches.iter().find(|m| m.ingredient_name == "pommes").unwrap();
+    let pommes_match = matches
+        .iter()
+        .find(|m| m.ingredient_name == "pommes")
+        .unwrap();
     assert_eq!(pommes_match.text, "4");
 
-    println!("✅ Successfully processed mixed English/French recipe with {} measurements", matches.len());
+    println!(
+        "✅ Successfully processed mixed English/French recipe with {} measurements",
+        matches.len()
+    );
 }
 
 /// Test edge cases for quantity-only ingredients
@@ -123,9 +139,22 @@ fn test_quantity_only_edge_cases() {
 
     for (input, (expected_quantity, expected_ingredient)) in test_cases {
         let matches = detector.find_measurements(input);
-        assert_eq!(matches.len(), 1, "Should find exactly one match for: {}", input);
-        assert_eq!(matches[0].text, expected_quantity, "Quantity should be '{}' for: {}", expected_quantity, input);
-        assert_eq!(matches[0].ingredient_name, expected_ingredient, "Ingredient should be '{}' for: {}", expected_ingredient, input);
+        assert_eq!(
+            matches.len(),
+            1,
+            "Should find exactly one match for: {}",
+            input
+        );
+        assert_eq!(
+            matches[0].text, expected_quantity,
+            "Quantity should be '{}' for: {}",
+            expected_quantity, input
+        );
+        assert_eq!(
+            matches[0].ingredient_name, expected_ingredient,
+            "Ingredient should be '{}' for: {}",
+            expected_ingredient, input
+        );
     }
 
     println!("✅ All quantity-only edge cases passed");
@@ -152,11 +181,13 @@ fn test_mixed_measurement_types() {
     assert!(matches.len() >= 6);
 
     // Verify different types are correctly identified
-    let traditional_measurements: Vec<_> = matches.iter()
+    let traditional_measurements: Vec<_> = matches
+        .iter()
         .filter(|m| m.text.contains(' ') && !m.text.chars().all(char::is_numeric))
         .collect();
 
-    let quantity_only: Vec<_> = matches.iter()
+    let quantity_only: Vec<_> = matches
+        .iter()
         .filter(|m| m.text.chars().all(char::is_numeric))
         .collect();
 
@@ -173,10 +204,15 @@ fn test_mixed_measurement_types() {
     assert!(apples_match.is_some());
     assert_eq!(apples_match.unwrap().text, "4");
 
-    let potatoes_match = quantity_only.iter().find(|m| m.ingredient_name == "potatoes");
+    let potatoes_match = quantity_only
+        .iter()
+        .find(|m| m.ingredient_name == "potatoes");
     assert!(potatoes_match.is_some());
     assert_eq!(potatoes_match.unwrap().text, "2");
 
-    println!("✅ Mixed measurement types correctly distinguished: {} traditional, {} quantity-only",
-             traditional_measurements.len(), quantity_only.len());
+    println!(
+        "✅ Mixed measurement types correctly distinguished: {} traditional, {} quantity-only",
+        traditional_measurements.len(),
+        quantity_only.len()
+    );
 }
