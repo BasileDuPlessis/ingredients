@@ -48,7 +48,7 @@ fn test_quantity_only_integration() {
     assert_eq!(matches[6].ingredient_name, "oranges");
 
     // Check other measurements still work
-    assert_eq!(matches[2].text, "2 litre");
+    assert_eq!(matches[2].text, "1/2 litre");
     assert_eq!(matches[2].ingredient_name, "lait");
 
     assert_eq!(matches[3].text, "2 cuillères à soupe");

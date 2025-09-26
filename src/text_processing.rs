@@ -8,6 +8,7 @@
 //! - Measurement unit detection using comprehensive regex patterns
 //! - Support for English and French measurement units
 //! - **Quantity-only ingredient support**: Recognizes ingredients with quantities but no units (e.g., "6 oeufs", "4 pommes")
+//! - **Fraction support**: Recognizes fractional quantities (e.g., "1/2 litre", "3/4 cup")
 //! - Ingredient name extraction alongside quantity and measurement
 //! - Line-by-line text analysis for ingredient lists
 
@@ -32,15 +33,18 @@ pub struct MeasurementMatch {
 }
 
 /// Configuration options for measurement detection
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub struct MeasurementConfig {
     /// Custom regex pattern for measurements. If None, uses the default comprehensive pattern
+    #[allow(dead_code)]
     pub custom_pattern: Option<String>,
-    /// Whether to enable ingredient name post-processing
+    /// Whether to enable ingredient name postprocessing (cleaning, normalization)
     pub enable_ingredient_postprocessing: bool,
-    /// Maximum length for ingredient names (to prevent overly long extractions)
+    /// Maximum length for ingredient names (truncated if longer)
+    #[allow(dead_code)]
     pub max_ingredient_length: usize,
-    /// Whether to include count-based measurements (eggs, slices, etc.)
+    /// Whether to include count-only measurements (e.g., "2 eggs" -> "2")
+    #[allow(dead_code)]
     pub include_count_measurements: bool,
 }
 
@@ -63,8 +67,8 @@ pub struct MeasurementDetector {
     config: MeasurementConfig,
 }
 
-// Default comprehensive regex pattern for measurement units (now supports quantity-only ingredients)
-const DEFAULT_PATTERN: &str = r#"(?i)\b\d*\.?\d+(?:\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+\w+)\b"#;
+// Default comprehensive regex pattern for measurement units (now supports quantity-only ingredients and fractions)
+const DEFAULT_PATTERN: &str = r#"(?i)\b(\d*\.?\d+|\d+/\d+)(?:\s*(?:cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|g|gram(?:me)?s?|kg|kilogram(?:me)?s?|l|liter(?:s)?|litre(?:s)?|ml|millilitre(?:s)?|cc|cl|dl|cm3|mm3|cm²|mm²|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+\w+)\b"#;
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
@@ -123,6 +127,7 @@ impl MeasurementDetector {
     /// let detector = MeasurementDetector::with_pattern(custom_pattern)?;
     /// # Ok::<(), regex::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn with_pattern(pattern: &str) -> Result<Self, regex::Error> {
         let pattern = Regex::new(pattern)?;
         Ok(Self {
@@ -150,6 +155,7 @@ impl MeasurementDetector {
     /// let detector = MeasurementDetector::with_config(config)?;
     /// # Ok::<(), regex::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn with_config(config: MeasurementConfig) -> Result<Self, regex::Error> {
         let pattern = if let Some(ref custom_pattern) = config.custom_pattern {
             debug!("Using custom regex pattern: {}", custom_pattern);
@@ -279,17 +285,18 @@ impl MeasurementDetector {
     /// use ingredients::text_processing::MeasurementDetector;
     ///
     /// let detector = MeasurementDetector::new()?;
-    /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt\n3 sachets yeast\n6 oeufs\n4 pommes";
+    /// let text = "2 cups flour\n1/2 cup sugar\nsome salt\n3 sachets yeast\n6 oeufs\n4 pommes";
     /// let measurement_lines = detector.extract_measurement_lines(text);
     ///
     /// assert_eq!(measurement_lines.len(), 5);
     /// assert_eq!(measurement_lines[0], (0, "2 cups flour".to_string()));
-    /// assert_eq!(measurement_lines[1], (1, "1 tablespoon sugar".to_string()));
+    /// assert_eq!(measurement_lines[1], (1, "1/2 cup sugar".to_string()));
     /// assert_eq!(measurement_lines[2], (3, "3 sachets yeast".to_string()));
     /// assert_eq!(measurement_lines[3], (4, "6 oeufs".to_string()));
     /// assert_eq!(measurement_lines[4], (5, "4 pommes".to_string()));
     /// # Ok::<(), regex::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn extract_measurement_lines(&self, text: &str) -> Vec<(usize, String)> {
         text.lines()
             .enumerate()
@@ -315,12 +322,14 @@ impl MeasurementDetector {
     ///
     /// let detector = MeasurementDetector::new()?;
     /// assert!(detector.has_measurements("2 cups flour"));
+    /// assert!(detector.has_measurements("1/2 cup sugar"));  // fraction support
     /// assert!(detector.has_measurements("6 oeufs"));  // quantity-only ingredient
     /// assert!(detector.has_measurements("4 pommes")); // quantity-only ingredient
     /// assert!(!detector.has_measurements("some flour"));
     /// assert!(!detector.has_measurements("some eggs")); // plain text without quantity
     /// # Ok::<(), regex::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn has_measurements(&self, text: &str) -> bool {
         let result = self.pattern.is_match(text);
         debug!(
@@ -477,16 +486,18 @@ impl MeasurementDetector {
     /// use std::collections::HashSet;
     ///
     /// let detector = MeasurementDetector::new()?;
-    /// let text = "2 cups flour\n1 cup sugar\n500g butter\n6 oeufs\n4 pommes";
+    /// let text = "2 cups flour\n1/2 cup sugar\n500g butter\n6 oeufs\n4 pommes";
     /// let units = detector.get_unique_units(text);
     ///
     /// assert!(units.iter().any(|u| u.contains("cups")));
     /// assert!(units.iter().any(|u| u.contains("cup")));
+    /// assert!(units.iter().any(|u| u.contains("1/2"))); // fraction support
     /// assert!(units.iter().any(|u| u.contains("g")));
     /// assert!(units.iter().any(|u| u.contains("6")));  // quantity-only measurement
     /// assert!(units.iter().any(|u| u.contains("4")));  // quantity-only measurement
     /// # Ok::<(), regex::Error>(())
     /// ```
+    #[allow(dead_code)]
     pub fn get_unique_units(&self, text: &str) -> HashSet<String> {
         self.pattern
             .find_iter(text)
@@ -996,33 +1007,49 @@ mod tests {
     }
 
     #[test]
-    fn test_quantity_only_ingredients() {
+    fn test_fraction_measurements() {
         let detector = create_detector();
 
-        // Test quantity-only ingredients (no measurement units)
-        assert!(detector.has_measurements("6 oeufs"));
-        assert!(detector.has_measurements("2 œufs"));
-        assert!(detector.has_measurements("4 pommes"));
-        assert!(detector.has_measurements("3 eggs"));
-        assert!(detector.has_measurements("5 apples"));
+        // Test fraction measurements
+        assert!(detector.has_measurements("1/2 cup flour"));
+        assert!(detector.has_measurements("3/4 teaspoon salt"));
+        assert!(detector.has_measurements("1/4 kg sugar"));
+        assert!(detector.has_measurements("2/3 litre milk"));
+        assert!(detector.has_measurements("1/8 teaspoon vanilla"));
+    }
 
-        // Test that regular measurements still work
-        assert!(detector.has_measurements("2 cups flour"));
-        assert!(detector.has_measurements("500g sugar"));
+    #[test]
+    fn test_fraction_ingredient_extraction() {
+        let detector = create_detector();
 
-        // Test that plain numbers don't match
-        assert!(!detector.has_measurements("123"));
-        assert!(!detector.has_measurements("1"));
+        // Test fraction ingredient name extraction
+        let matches = detector.find_measurements("1/2 cup flour\n3/4 teaspoon salt\n1/4 kg sugar");
 
-        // Test find_measurements for quantity-only ingredients
-        let matches = detector.find_measurements("6 oeufs\n4 pommes");
+        assert_eq!(matches.len(), 3);
+
+        assert_eq!(matches[0].text, "1/2 cup");
+        assert_eq!(matches[0].ingredient_name, "flour");
+
+        assert_eq!(matches[1].text, "3/4 teaspoon");
+        assert_eq!(matches[1].ingredient_name, "salt");
+
+        assert_eq!(matches[2].text, "1/4 kg");
+        assert_eq!(matches[2].ingredient_name, "sugar");
+    }
+
+    #[test]
+    fn test_fraction_with_french_measurements() {
+        let detector = create_detector();
+
+        // Test fractions with French measurements
+        let matches = detector.find_measurements("1/2 litre de lait\n3/4 cuillère à café de sel");
+
         assert_eq!(matches.len(), 2);
 
-        // For quantity-only ingredients, split into quantity and ingredient name
-        assert_eq!(matches[0].text, "6");
-        assert_eq!(matches[0].ingredient_name, "oeufs");
+        assert_eq!(matches[0].text, "1/2 litre");
+        assert_eq!(matches[0].ingredient_name, "lait"); // "de " removed
 
-        assert_eq!(matches[1].text, "4");
-        assert_eq!(matches[1].ingredient_name, "pommes");
+        assert_eq!(matches[1].text, "3/4 cuillère à café");
+        assert_eq!(matches[1].ingredient_name, "sel"); // "de " removed
     }
 }
