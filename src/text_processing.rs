@@ -13,9 +13,9 @@
 //! - Line-by-line text analysis for ingredient lists
 
 use lazy_static::lazy_static;
-use log::{debug, info, trace, warn};
 use regex::Regex;
 use std::collections::HashSet;
+use tracing::{debug, info, trace, warn};
 
 /// Represents a detected measurement in text
 #[derive(Debug, Clone, PartialEq)]

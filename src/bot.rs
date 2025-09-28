@@ -1,11 +1,11 @@
 use anyhow::Result;
-use log::{error, info};
 use sqlx::postgres::PgPool;
 use std::io::Write;
 use std::sync::{Arc, LazyLock};
 use teloxide::prelude::*;
 use teloxide::types::FileId;
 use tempfile::NamedTempFile;
+use tracing::{debug, error, info, warn};
 
 // Import localization
 use crate::localization::{t_args_lang, t_lang};
@@ -57,9 +57,12 @@ async fn download_and_process_image(
     language_code: Option<&str>,
 ) -> Result<String> {
     let temp_path = match download_file(bot, file_id).await {
-        Ok(path) => path,
+        Ok(path) => {
+            debug!(user_id = %chat_id, temp_path = %path, "Image downloaded successfully");
+            path
+        }
         Err(e) => {
-            error!("Failed to download image for user {chat_id}: {e:?}");
+            error!(user_id = %chat_id, error = %e, "Failed to download image for user");
             bot.send_message(chat_id, t_lang("error-download-failed", language_code))
                 .await?;
             return Err(e);
@@ -73,7 +76,7 @@ async fn download_and_process_image(
 
         // Validate image format before OCR processing
         if !crate::ocr::is_supported_image_format(&temp_path, &OCR_CONFIG) {
-            info!("Unsupported image format for user {chat_id}");
+            warn!(user_id = %chat_id, "Unsupported image format rejected");
             bot.send_message(chat_id, t_lang("error-unsupported-format", language_code))
                 .await?;
             return Ok(String::new());
@@ -90,15 +93,15 @@ async fn download_and_process_image(
         {
             Ok(extracted_text) => {
                 if extracted_text.is_empty() {
-                    info!("No text found in image from user {chat_id}");
+                    warn!(user_id = %chat_id, "OCR extraction returned empty text");
                     bot.send_message(chat_id, t_lang("error-no-text-found", language_code))
                         .await?;
                     Ok(String::new())
                 } else {
                     info!(
-                        "Successfully extracted {} characters of text from user {}",
-                        extracted_text.len(),
-                        chat_id
+                        user_id = %chat_id,
+                        chars_extracted = extracted_text.len(),
+                        "OCR extraction completed successfully"
                     );
 
                     // Process the extracted text to find ingredients with measurements
@@ -112,7 +115,11 @@ async fn download_and_process_image(
                 }
             }
             Err(e) => {
-                error!("OCR processing failed for user {chat_id}: {e:?}");
+                error!(
+                    user_id = %chat_id,
+                    error = %e,
+                    "OCR processing failed for user"
+                );
 
                 // Provide more specific error messages based on the error type
                 let error_message = match &e {
@@ -144,9 +151,9 @@ async fn download_and_process_image(
 
     // Always clean up the temporary file
     if let Err(cleanup_err) = std::fs::remove_file(&temp_path) {
-        error!("Failed to clean up temporary file {temp_path}: {cleanup_err:?}");
+        error!(temp_path = %temp_path, error = %cleanup_err, "Failed to clean up temporary file");
     } else {
-        info!("Cleaned up temporary file: {temp_path}");
+        debug!(temp_path = %temp_path, "Temporary file cleaned up successfully");
     }
 
     result
@@ -166,16 +173,16 @@ async fn download_and_process_image(
 ///
 /// Returns a formatted string with detected ingredients and measurements
 fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&str>) -> String {
-    info!(
-        "Processing extracted text for ingredients: {} characters",
-        extracted_text.len()
+    debug!(
+        text_length = extracted_text.len(),
+        "Processing extracted text for ingredients"
     );
 
     // Create measurement detector with default configuration
     let detector = match MeasurementDetector::new() {
         Ok(detector) => detector,
         Err(e) => {
-            error!("Failed to create measurement detector: {}", e);
+            error!(error = %e, "Failed to create measurement detector - ingredient extraction disabled");
             return format!(
                 "❌ {}\n\n{}",
                 t_lang("error-processing-failed", language_code),
@@ -197,7 +204,7 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
         );
     }
 
-    info!("Found {} measurement matches", matches.len());
+    info!(matches_found = matches.len(), "Measurement detection completed");
 
     // Group matches by line for better organization
     let mut ingredients_by_line: std::collections::HashMap<usize, Vec<&MeasurementMatch>> =
@@ -260,7 +267,7 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
 
 async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
     if let Some(text) = msg.text() {
-        info!("Received text message from user {}: {}", msg.chat.id, text);
+        debug!(user_id = %msg.chat.id, message_length = text.len(), "Received text message from user");
 
         // Extract user's language code from Telegram
         let language_code = msg
@@ -329,14 +336,8 @@ async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
         .and_then(|user| user.language_code.as_ref())
         .map(|s| s.as_str());
 
-    info!(
-        "{}",
-        t_args_lang(
-            "photo-received",
-            &[("user_id", &msg.chat.id.to_string())],
-            language_code
-        )
-    );
+    debug!(user_id = %msg.chat.id, "Received photo message from user");
+
     if let Some(photos) = msg.photo() {
         if let Some(largest_photo) = photos.last() {
             let _temp_path = download_and_process_image(
@@ -363,14 +364,7 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
     if let Some(doc) = msg.document() {
         if let Some(mime_type) = &doc.mime_type {
             if mime_type.to_string().starts_with("image/") {
-                info!(
-                    "{}",
-                    t_args_lang(
-                        "document-image",
-                        &[("user_id", &msg.chat.id.to_string())],
-                        language_code
-                    )
-                );
+                debug!(user_id = %msg.chat.id, mime_type = %mime_type, "Received image document from user");
                 let _temp_path = download_and_process_image(
                     bot,
                     doc.file.id.clone(),
@@ -380,14 +374,7 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
                 )
                 .await;
             } else {
-                info!(
-                    "{}",
-                    t_args_lang(
-                        "document-non-image",
-                        &[("user_id", &msg.chat.id.to_string())],
-                        language_code
-                    )
-                );
+                debug!(user_id = %msg.chat.id, mime_type = %mime_type, "Received non-image document from user");
                 bot.send_message(
                     msg.chat.id,
                     t_lang("error-unsupported-format", language_code),
@@ -395,14 +382,7 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
                 .await?;
             }
         } else {
-            info!(
-                "{}",
-                t_args_lang(
-                    "document-no-mime",
-                    &[("user_id", &msg.chat.id.to_string())],
-                    language_code
-                )
-            );
+            debug!(user_id = %msg.chat.id, "Received document without mime type from user");
             bot.send_message(msg.chat.id, t_lang("error-no-mime-type", language_code))
                 .await?;
         }
@@ -418,14 +398,8 @@ async fn handle_unsupported_message(bot: &Bot, msg: &Message) -> Result<()> {
         .and_then(|user| user.language_code.as_ref())
         .map(|s| s.as_str());
 
-    info!(
-        "{}",
-        t_args_lang(
-            "unsupported-received",
-            &[("user_id", &msg.chat.id.to_string())],
-            language_code
-        )
-    );
+    debug!(user_id = %msg.chat.id, "Received unsupported message type from user");
+
     let help_message = format!(
         "{}\n\n{}\n{}\n{}\n{}\n{}\n\n{}",
         t_lang("unsupported-title", language_code),
@@ -461,12 +435,9 @@ pub async fn message_handler(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sqlx::postgres::PgPool;
     use std::fs;
     use std::io::Write;
-    use std::sync::Arc;
     use tempfile::NamedTempFile;
-    use tokio::sync::Mutex;
 
     // Import types from the ocr module for testing
     use crate::circuit_breaker::CircuitBreaker;

@@ -1,8 +1,8 @@
 use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
-use log::info;
 use sqlx::postgres::PgPool;
 use sqlx::Row;
+use tracing::{debug, error, info, warn};
 
 /// Represents a user in the database
 #[derive(Debug, Clone, PartialEq)]
@@ -51,7 +51,7 @@ pub struct ConversionRatio {
 
 /// Initialize the database schema
 pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
-    info!("Initializing database schema...");
+    info!("Initializing database schema");
 
     // Create users table
     sqlx::query(
@@ -153,7 +153,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
 
 /// Create a new OCR entry in the database
 pub async fn create_ocr_entry(pool: &PgPool, telegram_id: i64, content: &str) -> Result<i64> {
-    info!("Creating new OCR entry for telegram_id: {telegram_id}");
+    debug!(telegram_id = %telegram_id, "Creating new OCR entry");
 
     let row =
         sqlx::query("INSERT INTO ocr_entries (telegram_id, content) VALUES ($1, $2) RETURNING id")
@@ -164,14 +164,14 @@ pub async fn create_ocr_entry(pool: &PgPool, telegram_id: i64, content: &str) ->
             .context("Failed to insert new OCR entry")?;
 
     let entry_id: i64 = row.get(0);
-    info!("OCR entry created with ID: {entry_id}");
+    debug!(entry_id = %entry_id, "OCR entry created successfully");
 
     Ok(entry_id)
 }
 
 /// Read an OCR entry from the database by ID
 pub async fn read_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEntry>> {
-    info!("Reading OCR entry with ID: {entry_id}");
+    debug!(entry_id = %entry_id, "Reading OCR entry");
 
     let row = sqlx::query("SELECT id, telegram_id, content, created_at FROM ocr_entries WHERE id = $1")
         .bind(entry_id)
@@ -187,11 +187,11 @@ pub async fn read_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEn
                 content: row.get(2),
                 created_at: row.get(3),
             };
-            info!("OCR entry found with ID: {entry_id}");
+            debug!(entry_id = %entry_id, "OCR entry found");
             Ok(Some(entry))
         }
         None => {
-            info!("No OCR entry found with ID: {entry_id}");
+            debug!(entry_id = %entry_id, "No OCR entry found");
             Ok(None)
         }
     }
@@ -199,7 +199,7 @@ pub async fn read_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEn
 
 /// Update an existing OCR entry in the database
 pub async fn update_ocr_entry(pool: &PgPool, entry_id: i64, new_content: &str) -> Result<bool> {
-    info!("Updating OCR entry with ID: {entry_id}");
+    debug!(entry_id = %entry_id, "Updating OCR entry");
 
     let result = sqlx::query("UPDATE ocr_entries SET content = $1 WHERE id = $2")
         .bind(new_content)
@@ -210,7 +210,7 @@ pub async fn update_ocr_entry(pool: &PgPool, entry_id: i64, new_content: &str) -
 
     let rows_affected = result.rows_affected();
     if rows_affected > 0 {
-        info!("OCR entry updated successfully with ID: {entry_id}");
+        debug!(entry_id = %entry_id, "OCR entry updated successfully");
         Ok(true)
     } else {
         info!("No OCR entry found with ID: {entry_id}");
@@ -220,7 +220,7 @@ pub async fn update_ocr_entry(pool: &PgPool, entry_id: i64, new_content: &str) -
 
 /// Delete an OCR entry from the database
 pub async fn delete_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<bool> {
-    info!("Deleting OCR entry with ID: {entry_id}");
+    debug!(entry_id = %entry_id, "Deleting OCR entry");
 
     let result = sqlx::query("DELETE FROM ocr_entries WHERE id = $1")
         .bind(entry_id)
@@ -230,7 +230,7 @@ pub async fn delete_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<bool> {
 
     let rows_affected = result.rows_affected();
     if rows_affected > 0 {
-        info!("OCR entry deleted successfully with ID: {entry_id}");
+        debug!(entry_id = %entry_id, "OCR entry deleted successfully");
         Ok(true)
     } else {
         info!("No OCR entry found with ID: {entry_id}");
@@ -240,7 +240,7 @@ pub async fn delete_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<bool> {
 
 /// Get or create a user by Telegram ID
 pub async fn get_or_create_user(pool: &PgPool, telegram_id: i64, language_code: Option<&str>) -> Result<User> {
-    info!("Getting or creating user for telegram_id: {telegram_id}");
+    debug!(telegram_id = %telegram_id, "Getting or creating user");
 
     // Try to get existing user
     if let Some(user) = get_user_by_telegram_id(pool, telegram_id).await? {
@@ -266,13 +266,13 @@ pub async fn get_or_create_user(pool: &PgPool, telegram_id: i64, language_code: 
         updated_at: row.get(4),
     };
 
-    info!("User created with ID: {}", user.id);
+    debug!(user_id = %user.id, "User created successfully");
     Ok(user)
 }
 
 /// Get a user by Telegram ID
 pub async fn get_user_by_telegram_id(pool: &PgPool, telegram_id: i64) -> Result<Option<User>> {
-    info!("Getting user by telegram_id: {telegram_id}");
+    debug!(telegram_id = %telegram_id, "Getting user by telegram_id");
 
     let row = sqlx::query("SELECT id, telegram_id, language_code, created_at, updated_at FROM users WHERE telegram_id = $1")
         .bind(telegram_id)

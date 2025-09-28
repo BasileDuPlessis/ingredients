@@ -23,6 +23,8 @@ unic-langid = "0.9" # Language identifier support
 regex = "1.10" # Regular expressions for text processing
 lazy_static = "1.4" # Lazy static initialization
 chrono = { version = "0.4", features = ["serde"] } # DateTime handling
+tracing = "0.1" # Structured logging
+tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] } # Tracing subscriber with filtering
 
 [[example]]
 name = "recipe_parser"
