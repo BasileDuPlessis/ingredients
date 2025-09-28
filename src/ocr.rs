@@ -25,9 +25,9 @@
 //! - `log`: Logging functionality
 
 use anyhow::Result;
-use log::{error, info, warn};
 use std::fs::File;
 use std::io::{BufReader, Read};
+use tracing::{debug, error, info, warn};
 
 // Re-export types for easier access from documentation and external usage
 pub use crate::circuit_breaker::CircuitBreaker;
