@@ -3,6 +3,34 @@
 ## Project Overview
 This is a Telegram bot that extracts text from images using OCR (Optical Character Recognition). It processes photos and image files sent by users, extracts text using Tesseract, and stores the results in a PostgreSQL database with full-text search capabilities.
 
+## Key Features
+
+### Ingredient Extraction & Processing
+- **Smart Measurement Detection**: Recognizes quantities, units, and ingredient names from recipe images
+- **Multi-Language Support**: Handles both English and French measurement units (cups, grams, liters, etc.)
+- **Quantity-Only Ingredients**: Detects items like "6 eggs" or "4 apples" without explicit units
+- **Fraction Support**: Processes fractional quantities (½ cup, ¾ teaspoon, ⅓ liter)
+- **Comprehensive Unit Recognition**: Supports volume (cups, tablespoons, liters), weight (grams, pounds, kg), and count units (pieces, slices, cans)
+
+### Telegram Bot Interface
+- **Photo Processing**: Accepts photos sent directly in Telegram chats
+- **Document Support**: Handles image files uploaded as documents
+- **Real-Time Feedback**: Provides processing status updates and formatted results
+- **Multi-Language UI**: Localized responses in English and French based on user preferences
+- **Error Recovery**: Graceful handling of processing failures with user-friendly messages
+
+### Data Persistence & Search
+- **User-Scoped Storage**: Each user's ingredients are isolated and searchable
+- **Full-Text Search**: PostgreSQL FTS enables searching through all extracted text
+- **Structured Ingredient Data**: Stores parsed quantity, unit, name, and raw text for each ingredient
+- **OCR History**: Maintains complete history of processed images and extracted content
+
+### Reliability & Performance
+- **Circuit Breaker Protection**: Prevents system overload during OCR failures
+- **Instance Pooling**: Reuses Tesseract instances for faster processing
+- **Format Validation**: Pre-validates image formats and sizes before processing
+- **Resource Management**: Automatic cleanup of temporary files and connection pooling
+
 ## Architecture Components
 
 ### Core Modules
