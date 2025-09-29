@@ -52,16 +52,13 @@ async fn main() -> Result<()> {
 
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
-    // Set up the dialogue storage  
-    let storage = Arc::new(InMemStorage::new());
-
     // Set up the dispatcher with shared connection and dialogue support
     let handler = dptree::entry().branch(
         Update::filter_message().endpoint({
             let pool = Arc::clone(&shared_pool);
             move |bot: Bot, msg: Message| {
                 let pool = Arc::clone(&pool);
-                let dialogue = RecipeDialogue::new(storage, msg.chat.id);
+                let dialogue = RecipeDialogue::new(InMemStorage::new().into(), msg.chat.id);
                 async move { bot::message_handler(bot, msg, pool, dialogue).await }
             }
         })

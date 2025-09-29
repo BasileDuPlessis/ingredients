@@ -62,7 +62,7 @@ async fn download_and_process_image(
     success_message: &str,
     language_code: Option<&str>,
     dialogue: RecipeDialogue,
-    pool: Arc<PgPool>,
+    _pool: Arc<PgPool>, // Used later in dialogue flow for saving ingredients
 ) -> Result<String> {
     let temp_path = match download_file(bot, file_id).await {
         Ok(path) => {
