@@ -1,13 +1,12 @@
 # Data Model for Ingredients Telegram Bot
 
 ## Overview
-This document defines the comprehensive PostgreSQL database schema for the Ingredients Telegram bot. The schema supports user management, OCR text extraction, ingredient parsing, and unit conversions with full-text search capabilities.
+This document defines the PostgreSQL database schema for the Ingredients Telegram bot. The schema supports user management, OCR text extraction, and ingredient parsing with full-text search capabilities.
 
 ## Architecture Principles
 
-- **Normalized Design**: Proper separation of concerns with related entities
-- **Audit Trail**: Full OCR text preservation for traceability
 - **User Isolation**: Multi-user support with proper data segregation
+- **Audit Trail**: Full OCR text preservation for traceability
 - **Performance**: Indexed queries with full-text search optimization
 - **Extensibility**: Flexible schema for future feature additions
 
@@ -63,26 +62,6 @@ Stores parsed ingredient data with optional OCR linkage.
 - Primary key on `id`
 - Foreign key indexes on `user_id` and `ocr_entry_id`
 
-### 4. Conversion Ratios Table
-Stores ingredient-specific unit conversion factors.
-
-| Column          | Type          | Constraints                    | Description                          |
-|--------------   |---------------|-------------------------------|--------------------------------------|
-| id              | SERIAL        | PRIMARY KEY                   | Conversion ratio identifier          |
-| ingredient_name | VARCHAR(255)  | NOT NULL                      | Ingredient name                      |
-| from_unit       | VARCHAR(50)   | NOT NULL                      | Source unit                          |
-| to_unit         | VARCHAR(50)   | NOT NULL                      | Target unit                          |
-| ratio           | DECIMAL(10,6) | NOT NULL                      | Conversion multiplier                |
-| created_at      | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP     | Creation timestamp                   |
-| updated_at      | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP     | Last update timestamp                |
-
-**Constraints:**
-- Unique constraint on `(ingredient_name, from_unit, to_unit)`
-
-**Indexes:**
-- Primary key on `id`
-- Index on `ingredient_name` for ingredient filtering
-
 ## Relationships
 
 ### Entity Relationships
@@ -90,7 +69,6 @@ Stores ingredient-specific unit conversion factors.
 Users (1) ──── (N) Ingredients
 Users (1) ──── (N) OCR Entries
 OCR Entries (1) ──── (0..1) Ingredients
-Ingredients (N) ──── (1) Conversion Ratios (by ingredient_name)
 ```
 
 ### Foreign Key Constraints
@@ -151,10 +129,9 @@ FROM ocr_entries e, plainto_tsquery('english', $2) q
 WHERE e.telegram_id = $1 AND e.content_tsv @@ q.query
 ORDER BY rank DESC;
 
--- Ingredient search with conversions
-SELECT i.*, cr.ratio
+-- Ingredient search by name
+SELECT i.*
 FROM ingredients i
-LEFT JOIN conversion_ratios cr ON i.name = cr.ingredient_name
 WHERE i.user_id = $1 AND i.name ILIKE $2;
 ```
 
@@ -179,13 +156,6 @@ VALUES (1, 1, 'flour', 2.0, 'cups', '2 cups flour');
 -- Links to user and OCR entry for full traceability
 ```
 
-### Conversion Ratios Table
-```sql
-INSERT INTO conversion_ratios (ingredient_name, from_unit, to_unit, ratio)
-VALUES ('flour', 'cup', 'gram', 120.0);
--- Allows converting flour measurements between cups and grams
-```
-
 ## Performance Considerations
 
 ### Indexing Strategy
@@ -202,7 +172,6 @@ VALUES ('flour', 'cup', 'gram', 120.0);
 - **Users**: Thousands to millions
 - **OCR Entries**: Millions (one per image)
 - **Ingredients**: Tens of millions (multiple per entry)
-- **Conversions**: Hundreds (per ingredient type)
 
 ## Migration and Schema Evolution
 
@@ -236,6 +205,7 @@ VALUES ('flour', 'cup', 'gram', 120.0);
 - **Nutritional Data**: Integration with nutrition APIs
 - **Meal Planning**: Recipe scheduling and planning
 - **Social Features**: Recipe sharing between users
+- **Unit Conversions**: Ingredient-specific measurement conversions
 
 ### Schema Extensions
 - Additional metadata fields

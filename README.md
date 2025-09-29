@@ -180,23 +180,10 @@ CREATE TABLE ingredients (
     FOREIGN KEY (ocr_entry_id) REFERENCES ocr_entries(id)
 );
 
--- Conversion ratios table: Allows ingredient-specific conversions (weight↔volume, etc.)
-CREATE TABLE conversion_ratios (
-    id SERIAL PRIMARY KEY,
-    ingredient_name VARCHAR(255) NOT NULL,
-    from_unit VARCHAR(50) NOT NULL,
-    to_unit VARCHAR(50) NOT NULL,
-    ratio DECIMAL(10,6) NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(ingredient_name, from_unit, to_unit)
-);
-
 -- Indexes for performance
 CREATE INDEX ocr_entries_content_tsv_idx ON ocr_entries USING GIN (content_tsv);
 CREATE INDEX ingredients_user_id_idx ON ingredients(user_id);
 CREATE INDEX ingredients_ocr_entry_id_idx ON ingredients(ocr_entry_id);
-CREATE INDEX conversion_ratios_ingredient_name_idx ON conversion_ratios(ingredient_name);
 ```
 
 ## Contributing
@@ -217,6 +204,13 @@ CREATE INDEX conversion_ratios_ingredient_name_idx ON conversion_ratios(ingredie
 This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Changelog
+
+### v0.1.1 (2025-09-29)
+- **Removed**: Conversion ratios table and related functionality
+- **Refactored**: Measurement units moved to external JSON configuration (`config/measurement_units.json`)
+- **Updated**: Database schema simplified to 3 core tables (users, ocr_entries, ingredients)
+- **Improved**: Code cleanup and removal of unused imports
+- **Fixed**: Clippy warnings and placeholder tests
 
 ### v0.1.0 (2025-09-26)
 - Initial release with OCR text extraction and ingredient parsing

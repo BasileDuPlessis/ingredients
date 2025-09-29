@@ -2,7 +2,7 @@ use anyhow::{Context, Result};
 use chrono::{DateTime, Utc};
 use sqlx::postgres::PgPool;
 use sqlx::Row;
-use tracing::{debug, error, info, warn};
+use tracing::{debug, info};
 
 /// Represents a user in the database
 #[derive(Debug, Clone, PartialEq)]
@@ -33,18 +33,6 @@ pub struct Ingredient {
     pub quantity: Option<f64>,
     pub unit: Option<String>,
     pub raw_text: String,
-    pub created_at: DateTime<Utc>,
-    pub updated_at: DateTime<Utc>,
-}
-
-/// Represents a conversion ratio in the database
-#[derive(Debug, Clone, PartialEq)]
-pub struct ConversionRatio {
-    pub id: i64,
-    pub ingredient_name: String,
-    pub from_unit: String,
-    pub to_unit: String,
-    pub ratio: f64,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -101,23 +89,6 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     .await
     .context("Failed to create ingredients table")?;
 
-    // Create conversion_ratios table
-    sqlx::query(
-        "CREATE TABLE IF NOT EXISTS conversion_ratios (
-            id SERIAL PRIMARY KEY,
-            ingredient_name VARCHAR(255) NOT NULL,
-            from_unit VARCHAR(50) NOT NULL,
-            to_unit VARCHAR(50) NOT NULL,
-            ratio DECIMAL(10,6) NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            UNIQUE(ingredient_name, from_unit, to_unit)
-        )",
-    )
-    .execute(pool)
-    .await
-    .context("Failed to create conversion_ratios table")?;
-
     // Create indexes for performance
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS ocr_entries_content_tsv_idx ON ocr_entries USING GIN (content_tsv)",
@@ -139,13 +110,6 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     .execute(pool)
     .await
     .context("Failed to create ingredients ocr_entry_id index")?;
-
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS conversion_ratios_ingredient_name_idx ON conversion_ratios(ingredient_name)",
-    )
-    .execute(pool)
-    .await
-    .context("Failed to create conversion_ratios ingredient_name index")?;
 
     info!("Database schema initialized successfully");
     Ok(())
@@ -472,113 +436,6 @@ pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec
     Ok(ingredients)
 }
 
-/// Set a conversion ratio for an ingredient
-pub async fn set_conversion_ratio(
-    pool: &PgPool,
-    ingredient_name: &str,
-    from_unit: &str,
-    to_unit: &str,
-    ratio: f64,
-) -> Result<i64> {
-    info!("Setting conversion ratio for {ingredient_name}: {from_unit} -> {to_unit} = {ratio}");
-
-    let row = sqlx::query(
-        "INSERT INTO conversion_ratios (ingredient_name, from_unit, to_unit, ratio) VALUES ($1, $2, $3, $4) ON CONFLICT (ingredient_name, from_unit, to_unit) DO UPDATE SET ratio = EXCLUDED.ratio RETURNING id"
-    )
-    .bind(ingredient_name)
-    .bind(from_unit)
-    .bind(to_unit)
-    .bind(ratio)
-    .fetch_one(pool)
-    .await
-    .context("Failed to set conversion ratio")?;
-
-    let ratio_id: i64 = row.get(0);
-    info!("Conversion ratio set with ID: {ratio_id}");
-
-    Ok(ratio_id)
-}
-
-/// Get a conversion ratio for an ingredient
-pub async fn get_conversion_ratio(
-    pool: &PgPool,
-    ingredient_name: &str,
-    from_unit: &str,
-    to_unit: &str,
-) -> Result<Option<f64>> {
-    info!("Getting conversion ratio for {ingredient_name}: {from_unit} -> {to_unit}");
-
-    let row = sqlx::query("SELECT ratio FROM conversion_ratios WHERE ingredient_name = $1 AND from_unit = $2 AND to_unit = $3")
-        .bind(ingredient_name)
-        .bind(from_unit)
-        .bind(to_unit)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to get conversion ratio")?;
-
-    match row {
-        Some(row) => {
-            let ratio: f64 = row.get(0);
-            info!("Found conversion ratio: {ratio}");
-            Ok(Some(ratio))
-        }
-        None => {
-            info!("No conversion ratio found for {ingredient_name}: {from_unit} -> {to_unit}");
-            Ok(None)
-        }
-    }
-}
-
-/// List all conversion ratios for an ingredient
-pub async fn list_conversion_ratios_for_ingredient(
-    pool: &PgPool,
-    ingredient_name: &str,
-) -> Result<Vec<ConversionRatio>> {
-    info!("Listing conversion ratios for ingredient: {ingredient_name}");
-
-    let rows = sqlx::query("SELECT id, ingredient_name, from_unit, to_unit, ratio, created_at, updated_at FROM conversion_ratios WHERE ingredient_name = $1 ORDER BY created_at DESC")
-        .bind(ingredient_name)
-        .fetch_all(pool)
-        .await
-        .context("Failed to list conversion ratios")?;
-
-    let ratios: Vec<ConversionRatio> = rows
-        .into_iter()
-        .map(|row| ConversionRatio {
-            id: row.get(0),
-            ingredient_name: row.get(1),
-            from_unit: row.get(2),
-            to_unit: row.get(3),
-            ratio: row.get(4),
-            created_at: row.get(5),
-            updated_at: row.get(6),
-        })
-        .collect();
-
-    info!("Found {} conversion ratios for {ingredient_name}", ratios.len());
-    Ok(ratios)
-}
-
-/// Delete a conversion ratio from the database
-pub async fn delete_conversion_ratio(pool: &PgPool, ratio_id: i64) -> Result<bool> {
-    info!("Deleting conversion ratio with ID: {ratio_id}");
-
-    let result = sqlx::query("DELETE FROM conversion_ratios WHERE id = $1")
-        .bind(ratio_id)
-        .execute(pool)
-        .await
-        .context("Failed to delete conversion ratio")?;
-
-    let rows_affected = result.rows_affected();
-    if rows_affected > 0 {
-        info!("Conversion ratio deleted successfully with ID: {ratio_id}");
-        Ok(true)
-    } else {
-        info!("No conversion ratio found with ID: {ratio_id}");
-        Ok(false)
-    }
-}
-
 /// Search OCR entries using full-text search
 pub async fn search_ocr_entries(pool: &PgPool, telegram_id: i64, query: &str) -> Result<Vec<OcrEntry>> {
     info!("Searching OCR entries for telegram_id: {telegram_id} with query: {query}");
@@ -630,9 +487,6 @@ mod tests {
             .execute(&pool)
             .await?;
         sqlx::query("DROP TABLE IF EXISTS users CASCADE")
-            .execute(&pool)
-            .await?;
-        sqlx::query("DROP TABLE IF EXISTS conversion_ratios CASCADE")
             .execute(&pool)
             .await?;
 
@@ -771,44 +625,6 @@ mod tests {
         assert!(deleted);
 
         let not_found = read_ingredient(pool, ingredient_id).await?;
-        assert!(not_found.is_none());
-
-        Ok(())
-    }
-
-    #[tokio::test]
-    async fn test_conversion_ratio_operations() -> Result<()> {
-        skip_if_no_db!(test_conversion_ratio_operations_impl)
-    }
-
-    async fn test_conversion_ratio_operations_impl(pool: &PgPool) -> Result<()> {
-        let ratio_id = set_conversion_ratio(pool, "flour", "cup", "gram", 120.0).await?;
-        assert!(ratio_id > 0);
-
-        // Get conversion ratio
-        let ratio = get_conversion_ratio(pool, "flour", "cup", "gram").await?;
-        assert!(ratio.is_some());
-        assert_eq!(ratio.unwrap(), 120.0);
-
-        // Update conversion ratio (should return same ID)
-        let same_ratio_id = set_conversion_ratio(pool, "flour", "cup", "gram", 125.0).await?;
-        assert_eq!(same_ratio_id, ratio_id);
-
-        let updated_ratio = get_conversion_ratio(pool, "flour", "cup", "gram").await?;
-        assert_eq!(updated_ratio.unwrap(), 125.0);
-
-        // List conversion ratios for ingredient
-        let ratios = list_conversion_ratios_for_ingredient(pool, "flour").await?;
-        assert_eq!(ratios.len(), 1);
-        assert_eq!(ratios[0].from_unit, "cup");
-        assert_eq!(ratios[0].to_unit, "gram");
-        assert_eq!(ratios[0].ratio, 125.0);
-
-        // Delete conversion ratio
-        let deleted = delete_conversion_ratio(pool, ratio_id).await?;
-        assert!(deleted);
-
-        let not_found = get_conversion_ratio(pool, "flour", "cup", "gram").await?;
         assert!(not_found.is_none());
 
         Ok(())

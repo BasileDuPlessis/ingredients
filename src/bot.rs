@@ -515,23 +515,6 @@ mod tests {
         assert!(cleanup_result.is_ok() || cleanup_result.is_err()); // File might not exist
     }
 
-    /// Test database connection creation for message handler
-    #[test]
-    fn test_database_connection_creation() {
-        // Note: For PostgreSQL, connection creation is async and requires a real database
-        // This test is simplified since the pool is not actively used yet
-        assert!(true); // Placeholder test
-    }
-
-    /// Test message handler with database connection
-    #[tokio::test]
-    async fn test_message_handler_with_db() {
-        // This is a basic test to ensure the function signature is correct
-        // In a real scenario, you'd need to mock the Bot and Message types
-        // For now, we skip actual database operations
-        assert!(true); // Placeholder test
-    }
-
     /// Test OCR configuration defaults are reasonable
     #[test]
     fn test_ocr_config_defaults_reasonable() {
