@@ -18,7 +18,7 @@ use std::collections::HashSet;
 use tracing::{debug, info, trace, warn};
 
 /// Represents a detected measurement in text
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MeasurementMatch {
     /// The matched measurement text (e.g., "2 cups", "500g")
     pub text: String,

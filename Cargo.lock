@@ -1416,6 +1416,7 @@ dependencies = [
  "rand",
  "regex",
  "reqwest",
+ "serde",
  "sqlx",
  "teloxide",
  "tempfile",

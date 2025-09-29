@@ -6,6 +6,7 @@
 pub mod bot;
 pub mod circuit_breaker;
 pub mod db;
+pub mod dialogue;
 pub mod instance_manager;
 pub mod localization;
 pub mod measurement_patterns;

@@ -77,6 +77,13 @@ unsupported-final = Try sending me an image with text! 📝
 text-response = Received: {$text}
 text-tip = 💡 Tip: Send me an image with text to extract it using OCR!
 
+# Recipe name dialogue messages
+recipe-name-prompt = 🏷️ What would you like to call this recipe?
+recipe-name-prompt-hint = Please enter a name for your recipe (e.g., "Chocolate Chip Cookies", "Mom's Lasagna")
+recipe-name-invalid = ❌ Recipe name cannot be empty. Please enter a valid name for your recipe.
+recipe-name-too-long = ❌ Recipe name is too long (maximum 255 characters). Please enter a shorter name.
+recipe-complete = ✅ Recipe "{$recipe_name}" saved successfully with {$ingredient_count} ingredients!
+
 # Document messages
 document-image = Received image document from user {$user_id}
 document-non-image = Received non-image document from user {$user_id}

@@ -19,6 +19,12 @@ use crate::instance_manager::OcrInstanceManager;
 use crate::ocr_config::OcrConfig;
 use crate::ocr_errors::OcrError;
 
+// Import dialogue types
+use crate::dialogue::{RecipeDialogue, RecipeDialogueState, validate_recipe_name};
+
+// Import database types
+use crate::db::{get_or_create_user, create_ocr_entry, create_ingredient};
+
 // Create OCR configuration with default settings
 static OCR_CONFIG: LazyLock<OcrConfig> = LazyLock::new(OcrConfig::default);
 static OCR_INSTANCE_MANAGER: LazyLock<OcrInstanceManager> =
@@ -55,6 +61,8 @@ async fn download_and_process_image(
     chat_id: ChatId,
     success_message: &str,
     language_code: Option<&str>,
+    dialogue: RecipeDialogue,
+    _pool: Arc<PgPool>, // Used later in dialogue flow for saving ingredients
 ) -> Result<String> {
     let temp_path = match download_file(bot, file_id).await {
         Ok(path) => {
@@ -105,11 +113,25 @@ async fn download_and_process_image(
                     );
 
                     // Process the extracted text to find ingredients with measurements
-                    let processed_result =
-                        process_ingredients_from_text(&extracted_text, language_code);
+                    let ingredients = process_ingredients_and_extract_matches(&extracted_text, language_code);
 
-                    // Send the processed ingredient list back to the user
-                    bot.send_message(chat_id, &processed_result).await?;
+                    if ingredients.is_empty() {
+                        // No ingredients found, send message directly without dialogue
+                        let no_ingredients_msg = format!(
+                            "📝 {}\n\n{}\n\n```\n{}\n```",
+                            t_lang("no-ingredients-found", language_code),
+                            t_lang("no-ingredients-suggestion", language_code),
+                            extracted_text
+                        );
+                        bot.send_message(chat_id, &no_ingredients_msg).await?;
+                    } else {
+                        // Ingredients found, start dialogue for recipe name
+                        let ingredients_summary = format_ingredients_summary(&ingredients, language_code);
+                        bot.send_message(chat_id, &ingredients_summary).await?;
+                        
+                        // Start recipe name dialogue
+                        start_recipe_name_dialogue(bot, chat_id, dialogue, extracted_text.clone(), ingredients, language_code).await?;
+                    }
 
                     Ok(extracted_text)
                 }
@@ -159,20 +181,8 @@ async fn download_and_process_image(
     result
 }
 
-/// Process extracted OCR text to find ingredients with measurements
-///
-/// Takes the raw OCR text and uses text processing to extract structured
-/// ingredient information with quantities and measurements.
-///
-/// # Arguments
-///
-/// * `extracted_text` - Raw text extracted from OCR
-/// * `language_code` - User's language code for localization
-///
-/// # Returns
-///
-/// Returns a formatted string with detected ingredients and measurements
-fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&str>) -> String {
+/// Process extracted text and return measurement matches
+fn process_ingredients_and_extract_matches(extracted_text: &str, _language_code: Option<&str>) -> Vec<MeasurementMatch> {
     debug!(
         text_length = extracted_text.len(),
         "Processing extracted text for ingredients"
@@ -183,34 +193,24 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
         Ok(detector) => detector,
         Err(e) => {
             error!(error = %e, "Failed to create measurement detector - ingredient extraction disabled");
-            return format!(
-                "❌ {}\n\n{}",
-                t_lang("error-processing-failed", language_code),
-                t_lang("error-try-again", language_code)
-            );
+            return Vec::new();
         }
     };
 
     // Find all measurements in the text
     let matches = detector.find_measurements(extracted_text);
-
-    if matches.is_empty() {
-        info!("No measurements found in extracted text");
-        return format!(
-            "📝 {}\n\n{}\n\n```\n{}\n```",
-            t_lang("no-ingredients-found", language_code),
-            t_lang("no-ingredients-suggestion", language_code),
-            extracted_text
-        );
-    }
-
     info!(matches_found = matches.len(), "Measurement detection completed");
+    
+    matches
+}
 
+/// Format ingredients summary for display
+fn format_ingredients_summary(ingredients: &[MeasurementMatch], language_code: Option<&str>) -> String {
     // Group matches by line for better organization
     let mut ingredients_by_line: std::collections::HashMap<usize, Vec<&MeasurementMatch>> =
         std::collections::HashMap::new();
 
-    for measurement_match in &matches {
+    for measurement_match in ingredients {
         ingredients_by_line
             .entry(measurement_match.line_number)
             .or_default()
@@ -250,22 +250,191 @@ fn process_ingredients_from_text(extracted_text: &str, language_code: Option<&st
 
     // Add summary
     result.push_str(&format!(
-        "📊 **{}:** {}\n\n",
+        "📊 **{}:** {}\n",
         t_lang("total-ingredients", language_code),
-        matches.len()
-    ));
-
-    // Add the original extracted text for reference
-    result.push_str(&format!(
-        "📄 {}\n```\n{}\n```",
-        t_lang("original-text", language_code),
-        extracted_text
+        ingredients.len()
     ));
 
     result
 }
 
-async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
+/// Start the recipe name dialogue
+async fn start_recipe_name_dialogue(
+    bot: &Bot,
+    chat_id: ChatId,
+    dialogue: RecipeDialogue,
+    extracted_text: String,
+    ingredients: Vec<MeasurementMatch>,
+    language_code: Option<&str>,
+) -> Result<()> {
+    // Send recipe name prompt
+    let prompt_message = format!(
+        "{}\n{}",
+        t_lang("recipe-name-prompt", language_code),
+        t_lang("recipe-name-prompt-hint", language_code)
+    );
+    
+    bot.send_message(chat_id, prompt_message).await?;
+    
+    // Update dialogue state
+    dialogue.update(RecipeDialogueState::WaitingForRecipeName {
+        extracted_text,
+        ingredients,
+        language_code: language_code.map(|s| s.to_string()),
+    }).await?;
+    
+    Ok(())
+}
+
+/// Handle recipe name input during dialogue
+async fn handle_recipe_name_input(
+    bot: &Bot,
+    msg: &Message,
+    dialogue: RecipeDialogue,
+    pool: Arc<PgPool>,
+    recipe_name_input: &str,
+    extracted_text: String,
+    ingredients: Vec<MeasurementMatch>,
+    language_code: Option<&str>,
+) -> Result<()> {
+    // Validate recipe name
+    match validate_recipe_name(recipe_name_input) {
+        Ok(validated_name) => {
+            // Recipe name is valid, save ingredients to database
+            if let Err(e) = save_ingredients_to_database(
+                &pool,
+                msg.chat.id.0,
+                &extracted_text,
+                &ingredients,
+                &validated_name,
+                language_code,
+            ).await {
+                error!(error = %e, "Failed to save ingredients to database");
+                bot.send_message(
+                    msg.chat.id,
+                    t_lang("error-processing-failed", language_code)
+                ).await?;
+            } else {
+                // Success! Send confirmation message
+                let success_message = t_args_lang(
+                    "recipe-complete",
+                    &[
+                        ("recipe_name", &validated_name),
+                        ("ingredient_count", &ingredients.len().to_string()),
+                    ],
+                    language_code,
+                );
+                bot.send_message(msg.chat.id, success_message).await?;
+            }
+
+            // End the dialogue
+            dialogue.exit().await?;
+        }
+        Err("empty") => {
+            bot.send_message(
+                msg.chat.id,
+                t_lang("recipe-name-invalid", language_code)
+            ).await?;
+            // Keep dialogue active, user can try again
+        }
+        Err("too_long") => {
+            bot.send_message(
+                msg.chat.id,
+                t_lang("recipe-name-too-long", language_code)
+            ).await?;
+            // Keep dialogue active, user can try again
+        }
+        Err(_) => {
+            bot.send_message(
+                msg.chat.id,
+                t_lang("recipe-name-invalid", language_code)
+            ).await?;
+            // Keep dialogue active, user can try again
+        }
+    }
+
+    Ok(())
+}
+
+/// Parse quantity and unit from measurement text
+fn parse_measurement_text(measurement_text: &str) -> (Option<f64>, Option<String>) {
+    // Simple regex to extract quantity and unit
+    use regex::Regex;
+    
+    let re = Regex::new(r"^(\d+(?:[.,]\d+)?(?:/\d+)?)\s*(.*)$").unwrap();
+    
+    if let Some(captures) = re.captures(measurement_text.trim()) {
+        let quantity_str = captures.get(1).map_or("", |m| m.as_str());
+        let unit_str = captures.get(2).map_or("", |m| m.as_str()).trim();
+        
+        // Parse quantity (handle fractions)
+        let quantity = if quantity_str.contains('/') {
+            // Handle fractions like "1/2"
+            let parts: Vec<&str> = quantity_str.split('/').collect();
+            if parts.len() == 2 {
+                if let (Ok(numerator), Ok(denominator)) = (parts[0].parse::<f64>(), parts[1].parse::<f64>()) {
+                    if denominator != 0.0 {
+                        Some(numerator / denominator)
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                }
+            } else {
+                None
+            }
+        } else {
+            // Handle regular numbers, replace comma with dot for European format
+            quantity_str.replace(',', ".").parse::<f64>().ok()
+        };
+        
+        let unit = if unit_str.is_empty() {
+            None
+        } else {
+            Some(unit_str.to_string())
+        };
+        
+        (quantity, unit)
+    } else {
+        (None, None)
+    }
+}
+
+/// Save ingredients to database
+async fn save_ingredients_to_database(
+    pool: &PgPool,
+    telegram_id: i64,
+    extracted_text: &str,
+    ingredients: &[MeasurementMatch],
+    recipe_name: &str,
+    language_code: Option<&str>,
+) -> Result<()> {
+    // Get or create user
+    let user = get_or_create_user(pool, telegram_id, language_code).await?;
+    
+    // Create OCR entry
+    let ocr_entry_id = create_ocr_entry(pool, telegram_id, extracted_text).await?;
+    
+    // Save each ingredient
+    for ingredient in ingredients {
+        let (quantity, unit) = parse_measurement_text(&ingredient.text);
+        create_ingredient(
+            pool,
+            user.id,
+            Some(ocr_entry_id),
+            &ingredient.ingredient_name,
+            quantity,
+            unit.as_deref(),
+            &ingredient.text,
+            Some(recipe_name),
+        ).await?;
+    }
+    
+    Ok(())
+}
+
+async fn handle_text_message(bot: &Bot, msg: &Message, dialogue: RecipeDialogue, pool: Arc<PgPool>) -> Result<()> {
     if let Some(text) = msg.text() {
         debug!(user_id = %msg.chat.id, message_length = text.len(), "Received text message from user");
 
@@ -275,6 +444,34 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
             .as_ref()
             .and_then(|user| user.language_code.as_ref())
             .map(|s| s.as_str());
+
+        // Check dialogue state first
+        let dialogue_state = dialogue.get().await?;
+        match dialogue_state {
+            Some(RecipeDialogueState::WaitingForRecipeName { 
+                extracted_text, 
+                ingredients, 
+                language_code: dialogue_lang_code 
+            }) => {
+                // Use dialogue language code if available, otherwise fall back to message language
+                let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
+                
+                // Handle recipe name input
+                return handle_recipe_name_input(
+                    bot, 
+                    msg, 
+                    dialogue, 
+                    pool, 
+                    text, 
+                    extracted_text,
+                    ingredients, 
+                    effective_language_code
+                ).await;
+            }
+            Some(RecipeDialogueState::Start) | None => {
+                // Continue with normal command handling
+            }
+        }
 
         // Handle /start command
         if text == "/start" {
@@ -328,7 +525,7 @@ async fn handle_text_message(bot: &Bot, msg: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
+async fn handle_photo_message(bot: &Bot, msg: &Message, dialogue: RecipeDialogue, pool: Arc<PgPool>) -> Result<()> {
     // Extract user's language code from Telegram
     let language_code = msg
         .from
@@ -346,6 +543,8 @@ async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
                 msg.chat.id,
                 &t_lang("processing-photo", language_code),
                 language_code,
+                dialogue,
+                pool,
             )
             .await;
         }
@@ -353,7 +552,7 @@ async fn handle_photo_message(bot: &Bot, msg: &Message) -> Result<()> {
     Ok(())
 }
 
-async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
+async fn handle_document_message(bot: &Bot, msg: &Message, dialogue: RecipeDialogue, pool: Arc<PgPool>) -> Result<()> {
     // Extract user's language code from Telegram
     let language_code = msg
         .from
@@ -371,6 +570,8 @@ async fn handle_document_message(bot: &Bot, msg: &Message) -> Result<()> {
                     msg.chat.id,
                     &t_lang("processing-document", language_code),
                     language_code,
+                    dialogue,
+                    pool,
                 )
                 .await;
             } else {
@@ -417,14 +618,15 @@ async fn handle_unsupported_message(bot: &Bot, msg: &Message) -> Result<()> {
 pub async fn message_handler(
     bot: Bot,
     msg: Message,
-    _pool: Arc<PgPool>, // TODO: Use for database operations when OCR is implemented
+    pool: Arc<PgPool>,
+    dialogue: RecipeDialogue,
 ) -> Result<()> {
     if msg.text().is_some() {
-        handle_text_message(&bot, &msg).await?;
+        handle_text_message(&bot, &msg, dialogue, pool).await?;
     } else if msg.photo().is_some() {
-        handle_photo_message(&bot, &msg).await?;
+        handle_photo_message(&bot, &msg, dialogue, pool).await?;
     } else if msg.document().is_some() {
-        handle_document_message(&bot, &msg).await?;
+        handle_document_message(&bot, &msg, dialogue, pool).await?;
     } else {
         handle_unsupported_message(&bot, &msg).await?;
     }
