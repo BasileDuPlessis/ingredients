@@ -33,6 +33,7 @@ pub struct Ingredient {
     pub quantity: Option<f64>,
     pub unit: Option<String>,
     pub raw_text: String,
+    pub recipe_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -79,6 +80,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             quantity DECIMAL(10,3),
             unit VARCHAR(50),
             raw_text TEXT NOT NULL,
+            recipe_name VARCHAR(255),
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
@@ -301,11 +303,12 @@ pub async fn create_ingredient(
     quantity: Option<f64>,
     unit: Option<&str>,
     raw_text: &str,
+    recipe_name: Option<&str>,
 ) -> Result<i64> {
     info!("Creating new ingredient for user_id: {user_id}");
 
     let row = sqlx::query(
-        "INSERT INTO ingredients (user_id, ocr_entry_id, name, quantity, unit, raw_text) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
+        "INSERT INTO ingredients (user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id"
     )
     .bind(user_id)
     .bind(ocr_entry_id)
@@ -313,6 +316,7 @@ pub async fn create_ingredient(
     .bind(quantity)
     .bind(unit)
     .bind(raw_text)
+    .bind(recipe_name)
     .fetch_one(pool)
     .await
     .context("Failed to insert new ingredient")?;
@@ -327,7 +331,7 @@ pub async fn create_ingredient(
 pub async fn read_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<Option<Ingredient>> {
     info!("Reading ingredient with ID: {ingredient_id}");
 
-    let row = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, created_at, updated_at FROM ingredients WHERE id = $1")
+    let row = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name, created_at, updated_at FROM ingredients WHERE id = $1")
         .bind(ingredient_id)
         .fetch_optional(pool)
         .await
@@ -343,8 +347,9 @@ pub async fn read_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<Option
                 quantity: row.get(4),
                 unit: row.get(5),
                 raw_text: row.get(6),
-                created_at: row.get(7),
-                updated_at: row.get(8),
+                recipe_name: row.get(7),
+                created_at: row.get(8),
+                updated_at: row.get(9),
             };
             info!("Ingredient found with ID: {ingredient_id}");
             Ok(Some(ingredient))
@@ -364,14 +369,16 @@ pub async fn update_ingredient(
     quantity: Option<f64>,
     unit: Option<&str>,
     raw_text: &str,
+    recipe_name: Option<&str>,
 ) -> Result<bool> {
     info!("Updating ingredient with ID: {ingredient_id}");
 
-    let result = sqlx::query("UPDATE ingredients SET name = COALESCE($1, name), quantity = COALESCE($2, quantity), unit = COALESCE($3, unit), raw_text = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5")
+    let result = sqlx::query("UPDATE ingredients SET name = COALESCE($1, name), quantity = COALESCE($2, quantity), unit = COALESCE($3, unit), raw_text = $4, recipe_name = COALESCE($5, recipe_name), updated_at = CURRENT_TIMESTAMP WHERE id = $6")
         .bind(name)
         .bind(quantity)
         .bind(unit)
         .bind(raw_text)
+        .bind(recipe_name)
         .bind(ingredient_id)
         .execute(pool)
         .await
@@ -411,7 +418,7 @@ pub async fn delete_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<bool
 pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec<Ingredient>> {
     info!("Listing ingredients for user_id: {user_id}");
 
-    let rows = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, created_at, updated_at FROM ingredients WHERE user_id = $1 ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name, created_at, updated_at FROM ingredients WHERE user_id = $1 ORDER BY created_at DESC")
         .bind(user_id)
         .fetch_all(pool)
         .await
@@ -427,8 +434,9 @@ pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec
             quantity: row.get(4),
             unit: row.get(5),
             raw_text: row.get(6),
-            created_at: row.get(7),
-            updated_at: row.get(8),
+            recipe_name: row.get(7),
+            created_at: row.get(8),
+            updated_at: row.get(9),
         })
         .collect();
 
@@ -587,7 +595,8 @@ mod tests {
             "flour",
             Some(2.0),
             Some("cups"),
-            "flour 2 cups"
+            "flour 2 cups",
+            Some("Test Recipe")
         ).await?;
         assert!(ingredient_id > 0);
 
@@ -608,7 +617,8 @@ mod tests {
             Some("bread flour"),
             Some(3.0),
             Some("cups"),
-            "bread flour 3 cups"
+            "bread flour 3 cups",
+            Some("Updated Test Recipe")
         ).await?;
         assert!(updated);
 

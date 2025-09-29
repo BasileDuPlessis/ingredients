@@ -7,6 +7,8 @@ use std::env;
 use std::sync::Arc;
 use std::time::Duration;
 use teloxide::prelude::*;
+use teloxide::dispatching::dialogue::InMemStorage;
+use ingredients::dialogue::RecipeDialogue;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -50,14 +52,20 @@ async fn main() -> Result<()> {
 
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
-    // Set up the dispatcher with shared connection
-    let handler = dptree::entry().branch(Update::filter_message().endpoint({
-        let pool = Arc::clone(&shared_pool);
-        move |bot: Bot, msg: Message| {
-            let pool = Arc::clone(&pool);
-            async move { bot::message_handler(bot, msg, pool).await }
-        }
-    }));
+    // Set up the dialogue storage  
+    let storage = Arc::new(InMemStorage::new());
+
+    // Set up the dispatcher with shared connection and dialogue support
+    let handler = dptree::entry().branch(
+        Update::filter_message().endpoint({
+            let pool = Arc::clone(&shared_pool);
+            move |bot: Bot, msg: Message| {
+                let pool = Arc::clone(&pool);
+                let dialogue = RecipeDialogue::new(storage, msg.chat.id);
+                async move { bot::message_handler(bot, msg, pool, dialogue).await }
+            }
+        })
+    );
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()

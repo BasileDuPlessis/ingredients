@@ -77,6 +77,13 @@ unsupported-final = Essayez d'envoyer une image avec du texte ! 📝
 text-response = Reçu : {$text}
 text-tip = 💡 Conseil : Envoyez-moi une image avec du texte pour l'extraire avec OCR !
 
+# Messages de dialogue pour le nom de recette
+recipe-name-prompt = 🏷️ Comment souhaitez-vous nommer cette recette ?
+recipe-name-prompt-hint = Veuillez entrer un nom pour votre recette (par ex. "Cookies aux pépites de chocolat", "Lasagnes de Maman")
+recipe-name-invalid = ❌ Le nom de recette ne peut pas être vide. Veuillez entrer un nom valide pour votre recette.
+recipe-name-too-long = ❌ Le nom de recette est trop long (maximum 255 caractères). Veuillez entrer un nom plus court.
+recipe-complete = ✅ Recette "{$recipe_name}" sauvegardée avec succès avec {$ingredient_count} ingrédients !
+
 # Messages de document
 document-image = Document image reçu de l'utilisateur {$user_id}
 document-non-image = Document non-image reçu de l'utilisateur {$user_id}
