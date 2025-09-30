@@ -4,8 +4,6 @@
 //! testing end-to-end functionality including quantity-only ingredient detection.
 
 use ingredients::text_processing::{MeasurementConfig, MeasurementDetector};
-
-/// Test end-to-end processing of quantity-only ingredients
 #[test]
 fn test_quantity_only_integration() {
     // Create a measurement detector
@@ -37,21 +35,26 @@ fn test_quantity_only_integration() {
     assert_eq!(matches.len(), 9);
 
     // Check traditional measurements
-    assert_eq!(matches[0].text, "125 g");
+    assert_eq!(matches[0].quantity, "125");
+    assert_eq!(matches[0].measurement, Some("g".to_string()));
     assert_eq!(matches[0].ingredient_name, "farine");
 
     // Check quantity-only ingredients
-    assert_eq!(matches[1].text, "2");
+    assert_eq!(matches[1].quantity, "2");
+    assert_eq!(matches[1].measurement, None);
     assert_eq!(matches[1].ingredient_name, "œufs");
 
-    assert_eq!(matches[6].text, "2");
+    assert_eq!(matches[6].quantity, "2");
+    assert_eq!(matches[6].measurement, None);
     assert_eq!(matches[6].ingredient_name, "oranges");
 
     // Check other measurements still work
-    assert_eq!(matches[2].text, "1/2 litre");
+    assert_eq!(matches[2].quantity, "1/2");
+    assert_eq!(matches[2].measurement, Some("litre".to_string()));
     assert_eq!(matches[2].ingredient_name, "lait");
 
-    assert_eq!(matches[3].text, "2 cuillères à soupe");
+    assert_eq!(matches[3].quantity, "2");
+    assert_eq!(matches[3].measurement, Some("cuillères à soupe".to_string()));
     assert_eq!(matches[3].ingredient_name, "sucre");
 
     println!(
@@ -101,20 +104,23 @@ fn test_mixed_recipe_processing() {
         .iter()
         .find(|m| m.ingredient_name == "all-purpose flour")
         .unwrap();
-    assert_eq!(flour_match.text, "4 cups");
+    assert_eq!(flour_match.quantity, "4");
+    assert_eq!(flour_match.measurement, Some("cups".to_string()));
 
     // Check French quantity-only ingredients
     let oeufs_match = matches
         .iter()
         .find(|m| m.ingredient_name == "œufs")
         .unwrap();
-    assert_eq!(oeufs_match.text, "2");
+    assert_eq!(oeufs_match.quantity, "2");
+    assert_eq!(oeufs_match.measurement, None);
 
     let pommes_match = matches
         .iter()
         .find(|m| m.ingredient_name == "pommes")
         .unwrap();
-    assert_eq!(pommes_match.text, "4");
+    assert_eq!(pommes_match.quantity, "4");
+    assert_eq!(pommes_match.measurement, None);
 
     println!(
         "✅ Successfully processed mixed English/French recipe with {} measurements",
@@ -146,9 +152,14 @@ fn test_quantity_only_edge_cases() {
             input
         );
         assert_eq!(
-            matches[0].text, expected_quantity,
+            matches[0].quantity, expected_quantity,
             "Quantity should be '{}' for: {}",
             expected_quantity, input
+        );
+        assert_eq!(
+            matches[0].measurement, None,
+            "Measurement should be None for quantity-only ingredient: {}",
+            input
         );
         assert_eq!(
             matches[0].ingredient_name, expected_ingredient,
@@ -183,12 +194,12 @@ fn test_mixed_measurement_types() {
     // Verify different types are correctly identified
     let traditional_measurements: Vec<_> = matches
         .iter()
-        .filter(|m| m.text.contains(' ') && !m.text.chars().all(char::is_numeric))
+        .filter(|m| m.measurement.is_some())
         .collect();
 
     let quantity_only: Vec<_> = matches
         .iter()
-        .filter(|m| m.text.chars().all(char::is_numeric))
+        .filter(|m| m.measurement.is_none())
         .collect();
 
     // Should have traditional measurements and quantity-only ones
@@ -198,17 +209,17 @@ fn test_mixed_measurement_types() {
     // Check that we have the expected quantity-only ingredients
     let eggs_match = quantity_only.iter().find(|m| m.ingredient_name == "eggs");
     assert!(eggs_match.is_some());
-    assert_eq!(eggs_match.unwrap().text, "3");
+    assert_eq!(eggs_match.unwrap().quantity, "3");
 
     let apples_match = quantity_only.iter().find(|m| m.ingredient_name == "apples");
     assert!(apples_match.is_some());
-    assert_eq!(apples_match.unwrap().text, "4");
+    assert_eq!(apples_match.unwrap().quantity, "4");
 
     let potatoes_match = quantity_only
         .iter()
         .find(|m| m.ingredient_name == "potatoes");
     assert!(potatoes_match.is_some());
-    assert_eq!(potatoes_match.unwrap().text, "2");
+    assert_eq!(potatoes_match.unwrap().quantity, "2");
 
     println!(
         "✅ Mixed measurement types correctly distinguished: {} traditional, {} quantity-only",
@@ -261,7 +272,9 @@ fn test_end_to_end_ocr_to_database_workflow() {
         .find(|m| m.ingredient_name.contains("eggs"));
     assert!(eggs_match.is_some());
     // The regex might capture "2 l" from "2 large eggs", so just check it starts with "2"
-    assert!(eggs_match.unwrap().text.starts_with("2"));
+    assert!(eggs_match.unwrap().quantity.starts_with("2"));
+    // Note: The current regex captures "2 l" where "l" is interpreted as "liter"
+    // This is a limitation of the current regex pattern
 
     // Step 2: Simulate database operations (using test database)
     // Note: In a real integration test, this would use a test database
@@ -272,7 +285,7 @@ fn test_end_to_end_ocr_to_database_workflow() {
 
     // Verify measurement data is properly structured for database storage
     for measurement in &measurements {
-        assert!(!measurement.text.is_empty());
+        assert!(!measurement.quantity.is_empty());
         assert!(!measurement.ingredient_name.is_empty());
         // line_number and positions are usize, so they're always >= 0
         assert!(measurement.end_pos > measurement.start_pos);
@@ -282,7 +295,13 @@ fn test_end_to_end_ocr_to_database_workflow() {
     // Simulate FTS by checking that key terms are present
     let searchable_text = measurements
         .iter()
-        .map(|m| format!("{} {}", m.text, m.ingredient_name))
+        .map(|m| {
+            if let Some(ref unit) = m.measurement {
+                format!("{} {} {}", m.quantity, unit, m.ingredient_name)
+            } else {
+                format!("{} {}", m.quantity, m.ingredient_name)
+            }
+        })
         .collect::<Vec<_>>()
         .join(" ");
 
@@ -311,14 +330,16 @@ fn test_recipe_naming_dialogue_workflow() {
     let extracted_text = "2 cups flour\n3 eggs\n1 cup sugar";
     let ingredients = vec![
         ingredients::MeasurementMatch {
-            text: "2 cups".to_string(),
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
             ingredient_name: "flour".to_string(),
             line_number: 0,
             start_pos: 0,
             end_pos: 6,
         },
         ingredients::MeasurementMatch {
-            text: "3".to_string(),
+            quantity: "3".to_string(),
+            measurement: None,
             ingredient_name: "eggs".to_string(),
             line_number: 1,
             start_pos: 8,
@@ -407,13 +428,15 @@ fn test_multi_language_end_to_end_workflow() {
         .iter()
         .find(|m| m.ingredient_name == "eggs");
     assert!(english_eggs.is_some());
-    assert_eq!(english_eggs.unwrap().text, "2");
+    assert_eq!(english_eggs.unwrap().quantity, "2");
+    assert!(english_eggs.unwrap().measurement.is_none());
 
     let french_oeufs = french_measurements
         .iter()
         .find(|m| m.ingredient_name == "œufs");
     assert!(french_oeufs.is_some());
-    assert_eq!(french_oeufs.unwrap().text, "4");
+    assert_eq!(french_oeufs.unwrap().quantity, "4");
+    assert!(french_oeufs.unwrap().measurement.is_none());
 
     // Test localization messages
     let loc_manager = get_localization_manager();

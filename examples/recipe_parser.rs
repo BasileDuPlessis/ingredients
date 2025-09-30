@@ -39,10 +39,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
 
     println!("Found {} measurements:", matches.len());
     for (i, measurement) in matches.iter().enumerate() {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {}. {} → \"{}\" (line {})",
             i + 1,
-            measurement.text,
+            measurement_display,
             measurement.ingredient_name,
             measurement.line_number + 1
         );
@@ -83,10 +88,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         french_matches.len()
     );
     for (i, measurement) in french_matches.iter().enumerate() {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {}. {} → \"{}\" (line {})",
             i + 1,
-            measurement.text,
+            measurement_display,
             measurement.ingredient_name,
             measurement.line_number + 1
         );
@@ -119,10 +129,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         volume_matches.len()
     );
     for (i, measurement) in volume_matches.iter().enumerate() {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {}. {} → \"{}\"",
             i + 1,
-            measurement.text,
+            measurement_display,
             measurement.ingredient_name
         );
     }
@@ -150,10 +165,15 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         complex_matches.len()
     );
     for (i, measurement) in complex_matches.iter().enumerate() {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {}. {} → \"{}\" (line {})",
             i + 1,
-            measurement.text,
+            measurement_display,
             measurement.ingredient_name,
             measurement.line_number + 1
         );
@@ -206,18 +226,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     println!("With post-processing:");
     let with_pp = basic_detector.extract_ingredient_measurements(comparison_text);
     for measurement in &with_pp {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {} → \"{}\"",
-            measurement.text, measurement.ingredient_name
+            measurement_display, measurement.ingredient_name
         );
     }
 
     println!("\nWithout post-processing:");
     let without_pp = no_pp_detector.extract_ingredient_measurements(comparison_text);
     for measurement in &without_pp {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  {} → \"{}\"",
-            measurement.text, measurement.ingredient_name
+            measurement_display, measurement.ingredient_name
         );
     }
 

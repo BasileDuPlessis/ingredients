@@ -22,8 +22,10 @@ use tracing::{debug, info, trace, warn};
 /// Represents a detected measurement in text
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
 pub struct MeasurementMatch {
-    /// The matched measurement text (e.g., "2 cups", "500g")
-    pub text: String,
+    /// The extracted quantity (e.g., "2", "1/2", "500")
+    pub quantity: String,
+    /// The measurement unit (e.g., "cups", "g", "tablespoons")
+    pub measurement: Option<String>,
     /// The extracted ingredient name (e.g., "flour", "de tomates", "all-purpose flour")
     pub ingredient_name: String,
     /// The line number where the measurement was found
@@ -282,9 +284,11 @@ impl MeasurementDetector {
     /// let matches = detector.extract_ingredient_measurements(text);
     ///
     /// assert_eq!(matches.len(), 2);
-    /// assert_eq!(matches[0].text, "2 cups");
+    /// assert_eq!(matches[0].quantity, "2");
+    /// assert_eq!(matches[0].measurement, Some("cups".to_string()));
     /// assert_eq!(matches[0].ingredient_name, "flour");
-    /// assert_eq!(matches[1].text, "1 tablespoon");
+    /// assert_eq!(matches[1].quantity, "1");
+    /// assert_eq!(matches[1].measurement, Some("tablespoon".to_string()));
     /// assert_eq!(matches[1].ingredient_name, "sugar");
     /// # Ok::<(), regex::Error>(())
     /// ```
@@ -312,28 +316,27 @@ impl MeasurementDetector {
                 let measurement_unit = capture.name("measurement").map(|m| m.as_str());
                 let ingredient_from_capture = capture.name("ingredient").map(|m| m.as_str());
 
-                // Determine the measurement text and ingredient name using named groups
-                let (final_measurement_text, raw_ingredient_name) =
+                // Determine the quantity, measurement, and ingredient name
+                let (final_quantity, final_measurement, raw_ingredient_name) =
                     if let Some(ingredient) = ingredient_from_capture {
-                        // Quantity-only ingredient: use just the quantity as measurement text
+                        // Quantity-only ingredient: no measurement unit
                         debug!(
                             "Quantity-only ingredient detected: quantity='{}', ingredient='{}'",
                             quantity, ingredient
                         );
-                        (quantity.to_string(), ingredient.to_string())
-                    } else if let Some(_measurement) = measurement_unit {
-                        // Traditional measurement: use the full match text to preserve spacing
-                        // Extract ingredient name from text after the measurement
+                        (quantity.to_string(), None, ingredient.to_string())
+                    } else if let Some(measurement) = measurement_unit {
+                        // Traditional measurement: extract ingredient name from text after the measurement
                         let measurement_end = full_match.end();
                         let ingredient_name = line[measurement_end..].trim().to_string();
                         debug!(
-                            "Traditional measurement: '{}', ingredient='{}'",
-                            measurement_text, ingredient_name
+                            "Traditional measurement: quantity='{}', measurement='{}', ingredient='{}'",
+                            quantity, measurement, ingredient_name
                         );
-                        (measurement_text.to_string(), ingredient_name)
+                        (quantity.to_string(), Some(measurement.to_string()), ingredient_name)
                     } else {
                         // Fallback: shouldn't happen with current regex
-                        (measurement_text.to_string(), String::new())
+                        (quantity.to_string(), None, String::new())
                     };
 
                 let ingredient_name = self.post_process_ingredient_name(&raw_ingredient_name);
@@ -345,7 +348,8 @@ impl MeasurementDetector {
                 );
 
                 matches.push(MeasurementMatch {
-                    text: final_measurement_text,
+                    quantity: final_quantity,
+                    measurement: final_measurement,
                     ingredient_name,
                     line_number,
                     start_pos: current_pos + full_match.start(),

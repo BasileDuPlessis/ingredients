@@ -37,10 +37,15 @@ Mix dry ingredients, then add wet ingredients...
         println!("📏 Found {} measurements:", measurements.len());
 
         for (i, measurement) in measurements.iter().enumerate() {
+            let measurement_display = if let Some(ref unit) = measurement.measurement {
+                format!("{} {}", measurement.quantity, unit)
+            } else {
+                measurement.quantity.clone()
+            };
             println!(
                 "  • Measurement {}: '{}' (line {}, pos {}-{})",
                 i + 1,
-                measurement.text,
+                measurement_display,
                 measurement.line_number + 1,
                 measurement.start_pos,
                 measurement.end_pos
@@ -62,9 +67,14 @@ Mix dry ingredients, then add wet ingredients...
     println!("\n🇫🇷 Testing French measurements:");
     let french_measurements = detector.extract_ingredient_measurements(french_text);
     for measurement in french_measurements {
+        let measurement_display = if let Some(ref unit) = measurement.measurement {
+            format!("{} {}", measurement.quantity, unit)
+        } else {
+            measurement.quantity.clone()
+        };
         println!(
             "  • '{}' (line {})",
-            measurement.text,
+            measurement_display,
             measurement.line_number + 1
         );
     }

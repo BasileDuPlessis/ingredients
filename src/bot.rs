@@ -258,9 +258,15 @@ fn format_ingredients_summary(
                     measurement_match.ingredient_name.clone()
                 };
 
+                let measurement_display = if let Some(ref unit) = measurement_match.measurement {
+                    format!("{} {}", measurement_match.quantity, unit)
+                } else {
+                    measurement_match.quantity.clone()
+                };
+
                 result.push_str(&format!(
                     "   • **{}** → {}\n",
-                    measurement_match.text, ingredient_display
+                    measurement_display, ingredient_display
                 ));
             }
             result.push('\n');
@@ -375,30 +381,17 @@ async fn handle_recipe_name_input(
     Ok(())
 }
 
-/// Parse quantity and unit from measurement text
-fn parse_measurement_text(measurement_text: &str) -> (Option<f64>, Option<String>) {
-    // Simple regex to extract quantity and unit
-    use regex::Regex;
-
-    let re = Regex::new(r"^(\d+(?:[.,]\d+)?(?:/\d+)?)\s*(.*)$").unwrap();
-
-    if let Some(captures) = re.captures(measurement_text.trim()) {
-        let quantity_str = captures.get(1).map_or("", |m| m.as_str());
-        let unit_str = captures.get(2).map_or("", |m| m.as_str()).trim();
-
-        // Parse quantity (handle fractions)
-        let quantity = if quantity_str.contains('/') {
-            // Handle fractions like "1/2"
-            let parts: Vec<&str> = quantity_str.split('/').collect();
-            if parts.len() == 2 {
-                if let (Ok(numerator), Ok(denominator)) =
-                    (parts[0].parse::<f64>(), parts[1].parse::<f64>())
-                {
-                    if denominator != 0.0 {
-                        Some(numerator / denominator)
-                    } else {
-                        None
-                    }
+/// Parse quantity string to f64 (handles fractions and decimals)
+fn parse_quantity(quantity_str: &str) -> Option<f64> {
+    if quantity_str.contains('/') {
+        // Handle fractions like "1/2"
+        let parts: Vec<&str> = quantity_str.split('/').collect();
+        if parts.len() == 2 {
+            if let (Ok(numerator), Ok(denominator)) =
+                (parts[0].parse::<f64>(), parts[1].parse::<f64>())
+            {
+                if denominator != 0.0 {
+                    Some(numerator / denominator)
                 } else {
                     None
                 }
@@ -406,19 +399,11 @@ fn parse_measurement_text(measurement_text: &str) -> (Option<f64>, Option<String
                 None
             }
         } else {
-            // Handle regular numbers, replace comma with dot for European format
-            quantity_str.replace(',', ".").parse::<f64>().ok()
-        };
-
-        let unit = if unit_str.is_empty() {
             None
-        } else {
-            Some(unit_str.to_string())
-        };
-
-        (quantity, unit)
+        }
     } else {
-        (None, None)
+        // Handle regular numbers, replace comma with dot for European format
+        quantity_str.replace(',', ".").parse::<f64>().ok()
     }
 }
 
@@ -439,15 +424,25 @@ async fn save_ingredients_to_database(
 
     // Save each ingredient
     for ingredient in ingredients {
-        let (quantity, unit) = parse_measurement_text(&ingredient.text);
+        // Parse quantity from string (handle fractions)
+        let quantity = parse_quantity(&ingredient.quantity);
+        let unit = ingredient.measurement.as_deref();
+        
+        // Create raw text by combining quantity and measurement
+        let raw_text = if let Some(ref unit) = ingredient.measurement {
+            format!("{} {}", ingredient.quantity, unit)
+        } else {
+            ingredient.quantity.clone()
+        };
+        
         create_ingredient(
             pool,
             user.id,
             Some(ocr_entry_id),
             &ingredient.ingredient_name,
             quantity,
-            unit.as_deref(),
-            &ingredient.text,
+            unit,
+            &raw_text,
             Some(recipe_name),
         )
         .await?;

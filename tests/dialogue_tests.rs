@@ -23,7 +23,8 @@ async fn test_recipe_name_dialogue_validation() -> Result<()> {
 async fn test_dialogue_state_serialization() -> Result<()> {
     // Test that dialogue states can be serialized/deserialized with serde_json
     let ingredients = vec![MeasurementMatch {
-        text: "2 cups".to_string(),
+        quantity: "2".to_string(),
+        measurement: Some("cups".to_string()),
         ingredient_name: "flour".to_string(),
         line_number: 0,
         start_pos: 0,

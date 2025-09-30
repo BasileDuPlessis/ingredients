@@ -55,13 +55,15 @@ mod tests {
         assert_eq!(matches.len(), 2);
 
         // First match: "2 cups"
-        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].quantity, "2");
+        assert_eq!(matches[0].measurement, Some("cups".to_string()));
         assert_eq!(matches[0].line_number, 0);
         assert_eq!(matches[0].start_pos, 4);
         assert_eq!(matches[0].end_pos, 10);
 
         // Second match: "1 tbsp"
-        assert_eq!(matches[1].text, "1 tbsp");
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("tbsp".to_string()));
         assert_eq!(matches[1].line_number, 0);
     }
 
@@ -204,13 +206,16 @@ mod tests {
 
         assert_eq!(matches.len(), 3);
 
-        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].quantity, "2");
+        assert_eq!(matches[0].measurement, Some("cups".to_string()));
         assert_eq!(matches[0].ingredient_name, "flour");
 
-        assert_eq!(matches[1].text, "1 tablespoon");
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("tablespoon".to_string()));
         assert_eq!(matches[1].ingredient_name, "sugar");
 
-        assert_eq!(matches[2].text, "500g");
+        assert_eq!(matches[2].quantity, "500");
+        assert_eq!(matches[2].measurement, Some("g".to_string()));
         assert_eq!(matches[2].ingredient_name, "butter");
     }
 
@@ -225,13 +230,16 @@ mod tests {
 
         assert_eq!(matches.len(), 3);
 
-        assert_eq!(matches[0].text, "250 g");
+        assert_eq!(matches[0].quantity, "250");
+        assert_eq!(matches[0].measurement, Some("g".to_string()));
         assert_eq!(matches[0].ingredient_name, "farine"); // "de " removed by post-processing
 
-        assert_eq!(matches[1].text, "1 litre");
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("litre".to_string()));
         assert_eq!(matches[1].ingredient_name, "lait"); // "de " removed by post-processing
 
-        assert_eq!(matches[2].text, "2 tranches");
+        assert_eq!(matches[2].quantity, "2");
+        assert_eq!(matches[2].measurement, Some("tranches".to_string()));
         assert_eq!(matches[2].ingredient_name, "pain"); // "de " removed by post-processing
     }
 
@@ -246,13 +254,16 @@ mod tests {
 
         assert_eq!(matches.len(), 3);
 
-        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].quantity, "2");
+        assert_eq!(matches[0].measurement, Some("cups".to_string()));
         assert_eq!(matches[0].ingredient_name, "all-purpose flour");
 
-        assert_eq!(matches[1].text, "1 teaspoon");
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("teaspoon".to_string()));
         assert_eq!(matches[1].ingredient_name, "baking powder");
 
-        assert_eq!(matches[2].text, "500g");
+        assert_eq!(matches[2].quantity, "500");
+        assert_eq!(matches[2].measurement, Some("g".to_string()));
         assert_eq!(matches[2].ingredient_name, "unsalted butter");
     }
 
@@ -266,10 +277,12 @@ mod tests {
 
         assert_eq!(matches.len(), 2);
 
-        assert_eq!(matches[0].text, "2 cups");
+        assert_eq!(matches[0].quantity, "2");
+        assert_eq!(matches[0].measurement, Some("cups".to_string()));
         assert_eq!(matches[0].ingredient_name, "");
 
-        assert_eq!(matches[1].text, "1 tablespoon");
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("tablespoon".to_string()));
         assert_eq!(matches[1].ingredient_name, "");
     }
 
@@ -340,9 +353,12 @@ mod tests {
         assert_eq!(matches.len(), 3);
 
         // Verify each match captures the complete measurement
-        assert_eq!(matches[0].text, "2 cups");
-        assert_eq!(matches[1].text, "1 tbsp");
-        assert_eq!(matches[2].text, "500g");
+        assert_eq!(matches[0].quantity, "2");
+        assert_eq!(matches[0].measurement, Some("cups".to_string()));
+        assert_eq!(matches[1].quantity, "1");
+        assert_eq!(matches[1].measurement, Some("tbsp".to_string()));
+        assert_eq!(matches[2].quantity, "500");
+        assert_eq!(matches[2].measurement, Some("g".to_string()));
 
         // Verify positions are correct
         assert_eq!(matches[0].start_pos, 4); // "Mix 2" -> position after "Mix "
@@ -519,13 +535,16 @@ mod tests {
 
         assert_eq!(matches.len(), 3);
 
-        assert_eq!(matches[0].text, "1/2 cup");
+        assert_eq!(matches[0].quantity, "1/2");
+        assert_eq!(matches[0].measurement, Some("cup".to_string()));
         assert_eq!(matches[0].ingredient_name, "flour");
 
-        assert_eq!(matches[1].text, "3/4 teaspoon");
+        assert_eq!(matches[1].quantity, "3/4");
+        assert_eq!(matches[1].measurement, Some("teaspoon".to_string()));
         assert_eq!(matches[1].ingredient_name, "salt");
 
-        assert_eq!(matches[2].text, "1/4 kg");
+        assert_eq!(matches[2].quantity, "1/4");
+        assert_eq!(matches[2].measurement, Some("kg".to_string()));
         assert_eq!(matches[2].ingredient_name, "sugar");
     }
 
