@@ -75,9 +75,9 @@ fn init_tracing() {
     // Create a filter that allows INFO level by default, but DEBUG for specific modules
     let filter = EnvFilter::builder()
         .with_default_directive(Level::INFO.into())
-        // Reduce database logging to WARN level (only show important issues)
+        // Allow environment variable override
         .with_env_var("RUST_LOG")
-        .parse_lossy("");
+        .from_env_lossy();
 
     // Initialize tracing with JSON formatting for production readiness
     let log_format = env::var("LOG_FORMAT").unwrap_or_else(|_| "pretty".to_string());
