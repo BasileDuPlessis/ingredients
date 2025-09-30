@@ -57,7 +57,7 @@ async fn main() -> Result<()> {
         let pool = Arc::clone(&shared_pool);
         move |bot: Bot, msg: Message| {
             let pool = Arc::clone(&pool);
-            let dialogue = RecipeDialogue::new(InMemStorage::new().into(), msg.chat.id);
+            let dialogue = RecipeDialogue::new(InMemStorage::new(), msg.chat.id);
             async move { bot::message_handler(bot, msg, pool, dialogue).await }
         }
     }));

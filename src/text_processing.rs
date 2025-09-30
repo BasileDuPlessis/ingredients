@@ -14,7 +14,9 @@
 
 use lazy_static::lazy_static;
 use regex::Regex;
+use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use std::fs;
 use tracing::{debug, info, trace, warn};
 
 /// Represents a detected measurement in text
@@ -59,14 +61,98 @@ impl Default for MeasurementConfig {
     }
 }
 
+/// Measurement units configuration loaded from JSON
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MeasurementUnitsConfig {
+    pub measurement_units: MeasurementUnits,
+}
+
+#[derive(Debug, Clone, Deserialize, Serialize)]
+pub struct MeasurementUnits {
+    pub volume_units: Vec<String>,
+    pub weight_units: Vec<String>,
+    pub volume_units_metric: Vec<String>,
+    pub us_units: Vec<String>,
+    pub french_units: Vec<String>,
+}
+
 // Default comprehensive regex pattern for measurement units (now supports quantity-only ingredients and fractions)
 // Uses named capture groups: quantity, measurement, and ingredient
-const DEFAULT_PATTERN: &str = r#"(?i)(?P<quantity>\d*\.?\d+|\d+/\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞⅟])(?:\s*(?P<measurement>cup(?:s)?|teaspoon(?:s)?|tsp(?:\.?)|tablespoon(?:s)?|tbsp(?:\.?)|pint(?:s)?|quart(?:s)?|gallon(?:s)?|oz|ounce(?:s)?|lb(?:\.?)|pound(?:s)?|mg|gram(?:me)?s?|kilogram(?:me)?s?|kg|g|liter(?:s)?|litre(?:s)?|millilitre(?:s)?|ml|cm3|mm3|cm²|mm²|cl|dl|l|slice(?:s)?|can(?:s)?|bottle(?:s)?|stick(?:s)?|packet(?:s)?|pkg|bag(?:s)?|dash(?:es)?|pinch(?:es)?|drop(?:s)?|cube(?:s)?|piece(?:s)?|handful(?:s)?|bar(?:s)?|sheet(?:s)?|serving(?:s)?|portion(?:s)?|tasse(?:s)?|cuillère(?:s)?(?:\s+à\s+(?:café|soupe))?|poignée(?:s)?|sachet(?:s)?|paquet(?:s)?|boîte(?:s)?|conserve(?:s)?|tranche(?:s)?|morceau(?:x)?|gousse(?:s)?|brin(?:s)?|feuille(?:s)?|bouquet(?:s)?)|\s+(?P<ingredient>\w+))"#;
+// NOTE: This pattern is now built dynamically from config/measurement_units.json
+
+/// Load measurement units configuration from JSON file
+fn load_measurement_units_config() -> MeasurementUnitsConfig {
+    let config_path = "config/measurement_units.json";
+    match fs::read_to_string(config_path) {
+        Ok(content) => {
+            serde_json::from_str(&content).unwrap_or_else(|e| {
+                warn!("Failed to parse measurement units config: {}. Using default empty config.", e);
+                MeasurementUnitsConfig {
+                    measurement_units: MeasurementUnits {
+                        volume_units: vec![],
+                        weight_units: vec![],
+                        volume_units_metric: vec![],
+                        us_units: vec![],
+                        french_units: vec![],
+                    }
+                }
+            })
+        }
+        Err(e) => {
+            warn!("Failed to read measurement units config file '{}': {}. Using default empty config.", config_path, e);
+            MeasurementUnitsConfig {
+                measurement_units: MeasurementUnits {
+                    volume_units: vec![],
+                    weight_units: vec![],
+                    volume_units_metric: vec![],
+                    us_units: vec![],
+                    french_units: vec![],
+                }
+            }
+        }
+    }
+}
+
+/// Build the regex pattern from measurement units configuration
+fn build_measurement_regex_pattern() -> String {
+    let config = load_measurement_units_config();
+
+    // Combine all unit categories into a single collection
+    let mut all_units: Vec<String> = Vec::new();
+    all_units.extend(config.measurement_units.volume_units);
+    all_units.extend(config.measurement_units.weight_units);
+    all_units.extend(config.measurement_units.volume_units_metric);
+    all_units.extend(config.measurement_units.us_units);
+    all_units.extend(config.measurement_units.french_units);
+
+    // Remove duplicates and sort by length (longest first) to avoid partial matches
+    let unique_units: std::collections::HashSet<String> = all_units.into_iter().collect();
+    let mut sorted_units: Vec<String> = unique_units.into_iter().collect();
+
+    // Sort by length descending, then alphabetically for consistency
+    sorted_units.sort_by(|a, b| {
+        b.len().cmp(&a.len()).then(a.cmp(b))
+    });
+
+    // Escape regex special characters in each unit
+    let escaped_units: Vec<String> = sorted_units.into_iter()
+        .map(|unit| regex::escape(&unit))
+        .collect();
+
+    // Build the alternation pattern
+    let units_pattern = escaped_units.join("|");
+
+    // Build the complete regex pattern with named capture groups
+    format!(
+        r"(?i)(?P<quantity>\d*\.?\d+|\d+/\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞⅟])(?:\s*(?P<measurement>{})|\s+(?P<ingredient>\w+))",
+        units_pattern
+    )
+}
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
     static ref DEFAULT_REGEX: Regex =
-        Regex::new(DEFAULT_PATTERN).expect("Default measurement pattern should be valid");
+        Regex::new(&build_measurement_regex_pattern()).expect("Default measurement pattern should be valid");
 }
 
 /// Measurement detector using regex patterns for English and French units

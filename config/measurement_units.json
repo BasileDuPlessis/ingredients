@@ -56,7 +56,7 @@
       "cm²",
       "mm²"
     ],
-    "count_units": [
+    "us_units": [
       "slice",
       "slices",
       "can",
@@ -98,6 +98,8 @@
       "cuillère à café",
       "cuil. à soupe",
       "cuillère à soupe",
+      "cuillères à café",
+      "cuillères à soupe",
       "cuillère",
       "cuillères",
       "poignée",

@@ -33,26 +33,3 @@ pub fn validate_recipe_name(name: &str) -> Result<String, &'static str> {
 
     Ok(trimmed.to_string())
 }
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn test_recipe_name_validation() {
-        // Valid names
-        assert!(validate_recipe_name("Chocolate Chip Cookies").is_ok());
-        assert!(validate_recipe_name("  Mom's Lasagna  ").is_ok());
-
-        // Invalid names
-        assert!(validate_recipe_name("").is_err());
-        assert!(validate_recipe_name("   ").is_err());
-        assert!(validate_recipe_name(&"a".repeat(256)).is_err());
-    }
-
-    #[test]
-    fn test_recipe_name_trimming() {
-        let result = validate_recipe_name("  Test Recipe  ");
-        assert_eq!(result.unwrap(), "Test Recipe");
-    }
-}

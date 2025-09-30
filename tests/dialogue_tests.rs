@@ -63,3 +63,23 @@ async fn test_dialogue_functionality() -> Result<()> {
 
     Ok(())
 }
+
+/// Unit test for recipe name validation
+#[test]
+fn test_recipe_name_validation() {
+    // Valid names
+    assert!(validate_recipe_name("Chocolate Chip Cookies").is_ok());
+    assert!(validate_recipe_name("  Mom's Lasagna  ").is_ok());
+
+    // Invalid names
+    assert!(validate_recipe_name("").is_err());
+    assert!(validate_recipe_name("   ").is_err());
+    assert!(validate_recipe_name(&"a".repeat(256)).is_err());
+}
+
+/// Unit test for recipe name trimming
+#[test]
+fn test_recipe_name_trimming() {
+    let result = validate_recipe_name("  Test Recipe  ");
+    assert_eq!(result.unwrap(), "Test Recipe");
+}
