@@ -211,7 +211,7 @@ fn process_ingredients_and_extract_matches(
     };
 
     // Find all measurements in the text
-    let matches = detector.find_measurements(extracted_text);
+    let matches = detector.extract_ingredient_measurements(extracted_text);
     info!(
         matches_found = matches.len(),
         "Measurement detection completed"

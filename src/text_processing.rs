@@ -84,20 +84,21 @@ pub struct MeasurementUnits {
 fn load_measurement_units_config() -> MeasurementUnitsConfig {
     let config_path = "config/measurement_units.json";
     match fs::read_to_string(config_path) {
-        Ok(content) => {
-            serde_json::from_str(&content).unwrap_or_else(|e| {
-                warn!("Failed to parse measurement units config: {}. Using default empty config.", e);
-                MeasurementUnitsConfig {
-                    measurement_units: MeasurementUnits {
-                        volume_units: vec![],
-                        weight_units: vec![],
-                        volume_units_metric: vec![],
-                        us_units: vec![],
-                        french_units: vec![],
-                    }
-                }
-            })
-        }
+        Ok(content) => serde_json::from_str(&content).unwrap_or_else(|e| {
+            warn!(
+                "Failed to parse measurement units config: {}. Using default empty config.",
+                e
+            );
+            MeasurementUnitsConfig {
+                measurement_units: MeasurementUnits {
+                    volume_units: vec![],
+                    weight_units: vec![],
+                    volume_units_metric: vec![],
+                    us_units: vec![],
+                    french_units: vec![],
+                },
+            }
+        }),
         Err(e) => {
             warn!("Failed to read measurement units config file '{}': {}. Using default empty config.", config_path, e);
             MeasurementUnitsConfig {
@@ -107,7 +108,7 @@ fn load_measurement_units_config() -> MeasurementUnitsConfig {
                     volume_units_metric: vec![],
                     us_units: vec![],
                     french_units: vec![],
-                }
+                },
             }
         }
     }
@@ -130,12 +131,11 @@ fn build_measurement_regex_pattern() -> String {
     let mut sorted_units: Vec<String> = unique_units.into_iter().collect();
 
     // Sort by length descending, then alphabetically for consistency
-    sorted_units.sort_by(|a, b| {
-        b.len().cmp(&a.len()).then(a.cmp(b))
-    });
+    sorted_units.sort_by(|a, b| b.len().cmp(&a.len()).then(a.cmp(b)));
 
     // Escape regex special characters in each unit
-    let escaped_units: Vec<String> = sorted_units.into_iter()
+    let escaped_units: Vec<String> = sorted_units
+        .into_iter()
         .map(|unit| regex::escape(&unit))
         .collect();
 
@@ -151,8 +151,8 @@ fn build_measurement_regex_pattern() -> String {
 
 // Lazy static regex for default pattern to avoid recompilation
 lazy_static! {
-    static ref DEFAULT_REGEX: Regex =
-        Regex::new(&build_measurement_regex_pattern()).expect("Default measurement pattern should be valid");
+    static ref DEFAULT_REGEX: Regex = Regex::new(&build_measurement_regex_pattern())
+        .expect("Default measurement pattern should be valid");
 }
 
 /// Measurement detector using regex patterns for English and French units
@@ -258,9 +258,9 @@ impl MeasurementDetector {
         Ok(Self { pattern, config })
     }
 
-    /// Find all measurement matches in the given text
+    /// Extract all ingredient measurements from the given text
     ///
-    /// Scans the entire text and returns all detected measurements with their
+    /// Scans the entire text line by line and returns all detected measurements with their
     /// positions, line numbers, and extracted ingredient names.
     ///
     /// # Arguments
@@ -279,7 +279,7 @@ impl MeasurementDetector {
     ///
     /// let detector = MeasurementDetector::new()?;
     /// let text = "2 cups flour\n1 tablespoon sugar\nsome salt";
-    /// let matches = detector.find_measurements(text);
+    /// let matches = detector.extract_ingredient_measurements(text);
     ///
     /// assert_eq!(matches.len(), 2);
     /// assert_eq!(matches[0].text, "2 cups");
@@ -288,7 +288,7 @@ impl MeasurementDetector {
     /// assert_eq!(matches[1].ingredient_name, "sugar");
     /// # Ok::<(), regex::Error>(())
     /// ```
-    pub fn find_measurements(&self, text: &str) -> Vec<MeasurementMatch> {
+    pub fn extract_ingredient_measurements(&self, text: &str) -> Vec<MeasurementMatch> {
         let mut matches = Vec::new();
         let mut current_pos = 0;
 

@@ -10,12 +10,10 @@ pub mod dialogue;
 pub mod instance_manager;
 pub mod localization;
 pub mod measurement_patterns;
-pub mod measurement_types;
 pub mod ocr;
 pub mod ocr_config;
 pub mod ocr_errors;
 pub mod text_processing;
 
 // Re-export types for easier access
-pub use measurement_types::{MeasurementConfig, MeasurementMatch};
-pub use text_processing::MeasurementDetector;
+pub use text_processing::{MeasurementConfig, MeasurementDetector, MeasurementMatch};

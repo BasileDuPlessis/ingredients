@@ -33,7 +33,7 @@ Mix dry ingredients, then add wet ingredients...
         println!("✅ Text contains measurements!");
 
         // Find all measurements
-        let measurements = detector.find_measurements(ingredient_text);
+        let measurements = detector.extract_ingredient_measurements(ingredient_text);
         println!("📏 Found {} measurements:", measurements.len());
 
         for (i, measurement) in measurements.iter().enumerate() {
@@ -60,7 +60,7 @@ Mix dry ingredients, then add wet ingredients...
     // Test with French measurements
     let french_text = "Ingrédients :\n- 250 g de farine\n- 3 œufs\n- 1 litre de lait\n- 2 cuillères à soupe de sucre";
     println!("\n🇫🇷 Testing French measurements:");
-    let french_measurements = detector.find_measurements(french_text);
+    let french_measurements = detector.extract_ingredient_measurements(french_text);
     for measurement in french_measurements {
         println!(
             "  • '{}' (line {})",

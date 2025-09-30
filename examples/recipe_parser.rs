@@ -35,7 +35,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     Preheat oven to 375°F...
     "#;
 
-    let matches = basic_detector.find_measurements(simple_recipe);
+    let matches = basic_detector.extract_ingredient_measurements(simple_recipe);
 
     println!("Found {} measurements:", matches.len());
     for (i, measurement) in matches.iter().enumerate() {
@@ -76,7 +76,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     4 cuillères à soupe de Grand Marnier
     "#;
 
-    let french_matches = french_detector.find_measurements(french_recipe);
+    let french_matches = french_detector.extract_ingredient_measurements(french_recipe);
 
     println!(
         "Found {} measurements (with post-processing):",
@@ -112,7 +112,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     3 eggs
     "#;
 
-    let volume_matches = volume_only_detector.find_measurements(mixed_recipe);
+    let volume_matches = volume_only_detector.extract_ingredient_measurements(mixed_recipe);
 
     println!(
         "Found {} volume measurements (custom pattern):",
@@ -143,7 +143,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     2 cloves garlic, minced, 1/4 cup fresh parsley, chopped
     "#;
 
-    let complex_matches = complex_detector.find_measurements(complex_recipe);
+    let complex_matches = complex_detector.extract_ingredient_measurements(complex_recipe);
 
     println!(
         "Found {} measurements in complex recipe:",
@@ -179,7 +179,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     "#;
 
     let units = stats_detector.get_unique_units(shopping_list);
-    let measurements = stats_detector.find_measurements(shopping_list);
+    let measurements = stats_detector.extract_ingredient_measurements(shopping_list);
 
     println!("Total measurements found: {}", measurements.len());
     println!("Unique measurement units: {}", units.len());
@@ -204,7 +204,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "2 cups of all-purpose flour\n1 tablespoon of olive oil\n500g of dark chocolate";
 
     println!("With post-processing:");
-    let with_pp = basic_detector.find_measurements(comparison_text);
+    let with_pp = basic_detector.extract_ingredient_measurements(comparison_text);
     for measurement in &with_pp {
         println!(
             "  {} → \"{}\"",
@@ -213,7 +213,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
 
     println!("\nWithout post-processing:");
-    let without_pp = no_pp_detector.find_measurements(comparison_text);
+    let without_pp = no_pp_detector.extract_ingredient_measurements(comparison_text);
     for measurement in &without_pp {
         println!(
             "  {} → \"{}\"",

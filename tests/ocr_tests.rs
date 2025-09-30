@@ -306,4 +306,115 @@ mod tests {
         );
         // The function compiles and can be called with 4 parameters as expected
     }
+
+    #[test]
+    fn test_validate_image_format_valid_png() {
+        let config = OcrConfig::default();
+
+        // Create mock PNG file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let png_header = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        temp_file.write_all(&png_header).unwrap();
+        temp_file.write_all(&vec![0u8; 1000]).unwrap(); // 1KB content
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_image_format_valid_jpeg() {
+        let config = OcrConfig::default();
+
+        // Create mock JPEG file
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let jpeg_header = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46];
+        temp_file.write_all(&jpeg_header).unwrap();
+        temp_file.write_all(&vec![0u8; 2000000]).unwrap(); // 2MB content (under JPEG limit)
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn test_validate_image_format_unsupported_format() {
+        let config = OcrConfig::default();
+
+        // Create file with unsupported format
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let unsupported_header = [0x00, 0x00, 0x00, 0x00];
+        temp_file.write_all(&unsupported_header).unwrap();
+        temp_file.write_all(&vec![0u8; 1000]).unwrap();
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        // Test that is_supported_image_format returns false for unsupported formats
+        let is_supported = is_supported_image_format(&temp_path, &config);
+        assert!(!is_supported, "Unsupported format should not be supported");
+
+        // But validate_image_with_format_limits should still pass (uses general limit)
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_ok(), "Validation should pass for unsupported format (uses general limit)");
+    }
+
+    #[test]
+    fn test_validate_image_format_png_too_large() {
+        let config = OcrConfig::default();
+
+        // Create PNG file that's too large
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let png_header = [0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A];
+        temp_file.write_all(&png_header).unwrap();
+        temp_file.write_all(&vec![0u8; 20 * 1024 * 1024]).unwrap(); // 20MB (over PNG limit)
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_validate_image_format_jpeg_too_large() {
+        let config = OcrConfig::default();
+
+        // Create JPEG file that's too large
+        let mut temp_file = NamedTempFile::new().unwrap();
+        let jpeg_header = [0xFF, 0xD8, 0xFF, 0xE0, 0x00, 0x10, 0x4A, 0x46];
+        temp_file.write_all(&jpeg_header).unwrap();
+        temp_file.write_all(&vec![0u8; 12 * 1024 * 1024]).unwrap(); // 12MB (over JPEG limit)
+        let temp_path = temp_file.path().to_string_lossy().to_string();
+
+        let result = validate_image_with_format_limits(&temp_path, &config);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_estimate_memory_usage_different_sizes() {
+        // Test reasonable memory estimation for different file sizes and formats
+        let file_size_1mb = 1024 * 1024;
+
+        // Test PNG format (highest memory factor)
+        let png_memory = estimate_memory_usage(file_size_1mb, &image::ImageFormat::Png);
+        assert_eq!(png_memory, 3.0); // 1MB * 3.0 = 3MB
+
+        // Test JPEG format
+        let jpeg_memory = estimate_memory_usage(file_size_1mb, &image::ImageFormat::Jpeg);
+        assert_eq!(jpeg_memory, 2.5); // 1MB * 2.5 = 2.5MB
+
+        // Test BMP format (lowest memory factor)
+        let bmp_memory = estimate_memory_usage(file_size_1mb, &image::ImageFormat::Bmp);
+        assert_eq!(bmp_memory, 1.2); // 1MB * 1.2 = 1.2MB
+
+        // Test TIFF format
+        let tiff_memory = estimate_memory_usage(file_size_1mb, &image::ImageFormat::Tiff);
+        assert_eq!(tiff_memory, 4.0); // 1MB * 4.0 = 4MB
+
+        // Test larger file
+        let file_size_5mb = 5 * 1024 * 1024;
+        let large_png_memory = estimate_memory_usage(file_size_5mb, &image::ImageFormat::Png);
+        assert_eq!(large_png_memory, 15.0); // 5MB * 3.0 = 15MB
+
+        // Test unknown format (should use default factor of 3.0)
+        let unknown_memory = estimate_memory_usage(file_size_1mb, &image::ImageFormat::WebP);
+        assert_eq!(unknown_memory, 3.0); // 1MB * 3.0 = 3MB (default)
+    }
 }

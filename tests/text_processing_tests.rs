@@ -50,7 +50,7 @@ mod tests {
         let detector = create_detector();
         let text = "Mix 2 cups flour with 1 tbsp sugar";
 
-        let matches = detector.find_measurements(text);
+        let matches = detector.extract_ingredient_measurements(text);
 
         assert_eq!(matches.len(), 2);
 
@@ -167,7 +167,7 @@ mod tests {
         let detector = create_detector();
         let text = "Ingredients:\n2 cups flour\n1 tablespoon sugar\n1 teaspoon salt\n\nInstructions:\nMix well";
 
-        let matches = detector.find_measurements(text);
+        let matches = detector.extract_ingredient_measurements(text);
 
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0].line_number, 1); // "2 cups flour"
@@ -199,7 +199,8 @@ mod tests {
         let detector = create_detector();
 
         // Test basic ingredient name extraction
-        let matches = detector.find_measurements("2 cups flour\n1 tablespoon sugar\n500g butter");
+        let matches = detector
+            .extract_ingredient_measurements("2 cups flour\n1 tablespoon sugar\n500g butter");
 
         assert_eq!(matches.len(), 3);
 
@@ -218,8 +219,9 @@ mod tests {
         let detector = create_detector();
 
         // Test French ingredient name extraction (with post-processing enabled by default)
-        let matches =
-            detector.find_measurements("250 g de farine\n1 litre de lait\n2 tranches de pain");
+        let matches = detector.extract_ingredient_measurements(
+            "250 g de farine\n1 litre de lait\n2 tranches de pain",
+        );
 
         assert_eq!(matches.len(), 3);
 
@@ -238,7 +240,7 @@ mod tests {
         let detector = create_detector();
 
         // Test multi-word ingredient names
-        let matches = detector.find_measurements(
+        let matches = detector.extract_ingredient_measurements(
             "2 cups all-purpose flour\n1 teaspoon baking powder\n500g unsalted butter",
         );
 
@@ -259,7 +261,8 @@ mod tests {
         let detector = create_detector();
 
         // Test when measurement is at the end of the line (no ingredient name)
-        let matches = detector.find_measurements("Add 2 cups\nMix 1 tablespoon\nBake at 350");
+        let matches =
+            detector.extract_ingredient_measurements("Add 2 cups\nMix 1 tablespoon\nBake at 350");
 
         assert_eq!(matches.len(), 2);
 
@@ -332,7 +335,7 @@ mod tests {
 
         // Test that the regex captures complete measurement units
         let test_text = "Mix 2 cups flour with 1 tbsp sugar and 500g butter";
-        let matches = detector.find_measurements(test_text);
+        let matches = detector.extract_ingredient_measurements(test_text);
 
         assert_eq!(matches.len(), 3);
 
@@ -436,8 +439,8 @@ mod tests {
         let detector = MeasurementDetector::with_config(config).unwrap();
 
         // Test basic post-processing
-        let matches =
-            detector.find_measurements("2 cups of flour\n1 tablespoon sugar\n500g butter");
+        let matches = detector
+            .extract_ingredient_measurements("2 cups of flour\n1 tablespoon sugar\n500g butter");
 
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0].ingredient_name, "flour"); // "of " removed
@@ -453,8 +456,8 @@ mod tests {
         };
         let detector = MeasurementDetector::with_config(config).unwrap();
 
-        let matches =
-            detector.find_measurements("250 g de farine\n1 litre du lait\n2 tasses d'eau");
+        let matches = detector
+            .extract_ingredient_measurements("250 g de farine\n1 litre du lait\n2 tasses d'eau");
 
         assert_eq!(matches.len(), 3);
         assert_eq!(matches[0].ingredient_name, "farine"); // "de " removed
@@ -471,8 +474,9 @@ mod tests {
         };
         let detector = MeasurementDetector::with_config(config).unwrap();
 
-        let matches = detector
-            .find_measurements("2 cups of very-long-ingredient-name-that-should-be-truncated");
+        let matches = detector.extract_ingredient_measurements(
+            "2 cups of very-long-ingredient-name-that-should-be-truncated",
+        );
 
         assert_eq!(matches.len(), 1);
         assert!(matches[0].ingredient_name.len() <= 20);
@@ -487,7 +491,7 @@ mod tests {
         };
         let detector = MeasurementDetector::with_config(config).unwrap();
 
-        let matches = detector.find_measurements("2 cups of flour");
+        let matches = detector.extract_ingredient_measurements("2 cups of flour");
 
         assert_eq!(matches.len(), 1);
         assert_eq!(matches[0].ingredient_name, "of flour"); // No post-processing
@@ -510,7 +514,8 @@ mod tests {
         let detector = create_detector();
 
         // Test fraction ingredient name extraction
-        let matches = detector.find_measurements("1/2 cup flour\n3/4 teaspoon salt\n1/4 kg sugar");
+        let matches = detector
+            .extract_ingredient_measurements("1/2 cup flour\n3/4 teaspoon salt\n1/4 kg sugar");
 
         assert_eq!(matches.len(), 3);
 
@@ -537,5 +542,36 @@ mod tests {
         assert!(detector.has_measurements("1/2 cup flour"));
         assert!(detector.has_measurements("1/3 teaspoon salt"));
         assert!(detector.has_measurements("1/4 kg sugar"));
+    }
+
+    #[test]
+    fn test_get_unique_units() {
+        let detector = create_detector();
+
+        // Test with various units
+        let text = "2 cups flour\n500g sugar\n1 tablespoon vanilla\n250 ml milk\n3 eggs";
+        let units = detector.get_unique_units(text);
+        assert_eq!(units.len(), 5); // 2 cups, 500g, 1 tablespoon, 250 ml, 3 eggs
+        assert!(units.contains(&"2 cups".to_string()));
+        assert!(units.contains(&"500g".to_string()));
+        assert!(units.contains(&"1 tablespoon".to_string()));
+        assert!(units.contains(&"250 ml".to_string()));
+        assert!(units.contains(&"3 eggs".to_string()));
+
+        // Test empty text
+        let empty_units = detector.get_unique_units("");
+        assert_eq!(empty_units.len(), 0);
+
+        // Test text with no measurements
+        let no_measurements = detector.get_unique_units("Just some plain text without measurements");
+        assert_eq!(no_measurements.len(), 0);
+
+        // Test duplicate units (should be unique)
+        let duplicate_text = "1 cup flour\n2 cups sugar\n3 cups milk";
+        let duplicate_units = detector.get_unique_units(duplicate_text);
+        assert_eq!(duplicate_units.len(), 3); // "1 cup", "2 cups", "3 cups" - all different
+        assert!(duplicate_units.contains(&"1 cup".to_string()));
+        assert!(duplicate_units.contains(&"2 cups".to_string()));
+        assert!(duplicate_units.contains(&"3 cups".to_string()));
     }
 }
