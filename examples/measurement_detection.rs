@@ -37,7 +37,8 @@ Mix dry ingredients, then add wet ingredients...
         println!("📏 Found {} measurements:", measurements.len());
 
         for (i, measurement) in measurements.iter().enumerate() {
-            println!("  • Measurement {}: '{}' (line {}, pos {}-{})",
+            println!(
+                "  • Measurement {}: '{}' (line {}, pos {}-{})",
                 i + 1,
                 measurement.text,
                 measurement.line_number + 1,
@@ -52,7 +53,6 @@ Mix dry ingredients, then add wet ingredients...
         for (line_num, line) in measurement_lines {
             println!("  {}. {}", line_num + 1, line.trim());
         }
-
     } else {
         println!("❌ No measurements found in the text.");
     }
@@ -62,7 +62,11 @@ Mix dry ingredients, then add wet ingredients...
     println!("\n🇫🇷 Testing French measurements:");
     let french_measurements = detector.find_measurements(french_text);
     for measurement in french_measurements {
-        println!("  • '{}' (line {})", measurement.text, measurement.line_number + 1);
+        println!(
+            "  • '{}' (line {})",
+            measurement.text,
+            measurement.line_number + 1
+        );
     }
 
     Ok(())

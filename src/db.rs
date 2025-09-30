@@ -99,12 +99,10 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     .await
     .context("Failed to create FTS index")?;
 
-    sqlx::query(
-        "CREATE INDEX IF NOT EXISTS ingredients_user_id_idx ON ingredients(user_id)",
-    )
-    .execute(pool)
-    .await
-    .context("Failed to create ingredients user_id index")?;
+    sqlx::query("CREATE INDEX IF NOT EXISTS ingredients_user_id_idx ON ingredients(user_id)")
+        .execute(pool)
+        .await
+        .context("Failed to create ingredients user_id index")?;
 
     sqlx::query(
         "CREATE INDEX IF NOT EXISTS ingredients_ocr_entry_id_idx ON ingredients(ocr_entry_id)",
@@ -139,11 +137,12 @@ pub async fn create_ocr_entry(pool: &PgPool, telegram_id: i64, content: &str) ->
 pub async fn read_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEntry>> {
     debug!(entry_id = %entry_id, "Reading OCR entry");
 
-    let row = sqlx::query("SELECT id, telegram_id, content, created_at FROM ocr_entries WHERE id = $1")
-        .bind(entry_id)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to read OCR entry")?;
+    let row =
+        sqlx::query("SELECT id, telegram_id, content, created_at FROM ocr_entries WHERE id = $1")
+            .bind(entry_id)
+            .fetch_optional(pool)
+            .await
+            .context("Failed to read OCR entry")?;
 
     match row {
         Some(row) => {
@@ -205,7 +204,11 @@ pub async fn delete_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<bool> {
 }
 
 /// Get or create a user by Telegram ID
-pub async fn get_or_create_user(pool: &PgPool, telegram_id: i64, language_code: Option<&str>) -> Result<User> {
+pub async fn get_or_create_user(
+    pool: &PgPool,
+    telegram_id: i64,
+    language_code: Option<&str>,
+) -> Result<User> {
     debug!(telegram_id = %telegram_id, "Getting or creating user");
 
     // Try to get existing user
@@ -269,11 +272,13 @@ pub async fn get_user_by_telegram_id(pool: &PgPool, telegram_id: i64) -> Result<
 pub async fn get_user_by_id(pool: &PgPool, user_id: i64) -> Result<Option<User>> {
     info!("Getting user by ID: {user_id}");
 
-    let row = sqlx::query("SELECT id, telegram_id, language_code, created_at, updated_at FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await
-        .context("Failed to get user by ID")?;
+    let row = sqlx::query(
+        "SELECT id, telegram_id, language_code, created_at, updated_at FROM users WHERE id = $1",
+    )
+    .bind(user_id)
+    .fetch_optional(pool)
+    .await
+    .context("Failed to get user by ID")?;
 
     match row {
         Some(row) => {
@@ -440,12 +445,19 @@ pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec
         })
         .collect();
 
-    info!("Found {} ingredients for user_id: {user_id}", ingredients.len());
+    info!(
+        "Found {} ingredients for user_id: {user_id}",
+        ingredients.len()
+    );
     Ok(ingredients)
 }
 
 /// Search OCR entries using full-text search
-pub async fn search_ocr_entries(pool: &PgPool, telegram_id: i64, query: &str) -> Result<Vec<OcrEntry>> {
+pub async fn search_ocr_entries(
+    pool: &PgPool,
+    telegram_id: i64,
+    query: &str,
+) -> Result<Vec<OcrEntry>> {
     info!("Searching OCR entries for telegram_id: {telegram_id} with query: {query}");
 
     let rows = sqlx::query("SELECT id, telegram_id, content, created_at FROM ocr_entries WHERE telegram_id = $1 AND content_tsv @@ plainto_tsquery('english', $2) ORDER BY created_at DESC")
@@ -484,7 +496,8 @@ mod tests {
             }
         };
 
-        let pool = PgPool::connect(&database_url).await
+        let pool = PgPool::connect(&database_url)
+            .await
             .context("Failed to connect to test database")?;
 
         // Clean up any existing test data
@@ -596,8 +609,9 @@ mod tests {
             Some(2.0),
             Some("cups"),
             "flour 2 cups",
-            Some("Test Recipe")
-        ).await?;
+            Some("Test Recipe"),
+        )
+        .await?;
         assert!(ingredient_id > 0);
 
         // Read ingredient
@@ -618,8 +632,9 @@ mod tests {
             Some(3.0),
             Some("cups"),
             "bread flour 3 cups",
-            Some("Updated Test Recipe")
-        ).await?;
+            Some("Updated Test Recipe"),
+        )
+        .await?;
         assert!(updated);
 
         let updated_ingredient = read_ingredient(pool, ingredient_id).await?;

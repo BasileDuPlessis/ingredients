@@ -1,14 +1,14 @@
 use anyhow::Result;
 use ingredients::bot;
 use ingredients::db;
+use ingredients::dialogue::RecipeDialogue;
 use ingredients::localization;
 use sqlx::postgres::PgPool;
 use std::env;
 use std::sync::Arc;
 use std::time::Duration;
-use teloxide::prelude::*;
 use teloxide::dispatching::dialogue::InMemStorage;
-use ingredients::dialogue::RecipeDialogue;
+use teloxide::prelude::*;
 use tracing::{info, Level};
 use tracing_subscriber::{fmt, layer::SubscriberExt, util::SubscriberInitExt, EnvFilter};
 
@@ -53,16 +53,14 @@ async fn main() -> Result<()> {
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
     // Set up the dispatcher with shared connection and dialogue support
-    let handler = dptree::entry().branch(
-        Update::filter_message().endpoint({
-            let pool = Arc::clone(&shared_pool);
-            move |bot: Bot, msg: Message| {
-                let pool = Arc::clone(&pool);
-                let dialogue = RecipeDialogue::new(InMemStorage::new().into(), msg.chat.id);
-                async move { bot::message_handler(bot, msg, pool, dialogue).await }
-            }
-        })
-    );
+    let handler = dptree::entry().branch(Update::filter_message().endpoint({
+        let pool = Arc::clone(&shared_pool);
+        move |bot: Bot, msg: Message| {
+            let pool = Arc::clone(&pool);
+            let dialogue = RecipeDialogue::new(InMemStorage::new().into(), msg.chat.id);
+            async move { bot::message_handler(bot, msg, pool, dialogue).await }
+        }
+    }));
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()
