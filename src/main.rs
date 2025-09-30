@@ -72,10 +72,11 @@ async fn main() -> Result<()> {
 }
 
 fn init_tracing() {
-    // Create a filter that allows INFO level by default, but DEBUG for specific modules
+    // Create a filter that allows DEBUG level by default for development
+    // This can be overridden with RUST_LOG environment variable
     let filter = EnvFilter::builder()
-        .with_default_directive(Level::INFO.into())
-        // Reduce database logging to WARN level (only show important issues)
+        .with_default_directive(Level::DEBUG.into())
+        // Allow environment variable override
         .with_env_var("RUST_LOG")
         .parse_lossy("");
 
