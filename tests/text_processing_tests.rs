@@ -582,7 +582,8 @@ mod tests {
         assert_eq!(empty_units.len(), 0);
 
         // Test text with no measurements
-        let no_measurements = detector.get_unique_units("Just some plain text without measurements");
+        let no_measurements =
+            detector.get_unique_units("Just some plain text without measurements");
         assert_eq!(no_measurements.len(), 0);
 
         // Test duplicate units (should be unique)

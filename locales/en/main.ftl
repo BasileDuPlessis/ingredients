@@ -89,8 +89,22 @@ review-title = Review Your Ingredients
 review-description = Please review the extracted ingredients below. Use the buttons to edit or delete items, then confirm when ready.
 review-confirm = Confirm and Save
 review-cancelled = ❌ Ingredient review cancelled. No ingredients were saved.
+review-no-ingredients = No ingredients remaining
+review-no-ingredients-help = All ingredients have been deleted. You can add more ingredients by sending another image, or cancel this recipe.
+review-add-more = Add More Ingredients
+review-add-more-instructions = Send another image with ingredients to add them to this recipe.
+cancel = Cancel
 edit-ingredient-prompt = Enter the corrected ingredient text
 current-ingredient = Current ingredient
+edit-empty = Ingredient text cannot be empty.
+edit-invalid-format = Invalid ingredient format. Please enter something like "2 cups flour" or "3 eggs".
+edit-try-again = Please try again with a valid ingredient format.
+edit-too-long = Ingredient text is too long (maximum 200 characters). Please enter a shorter description.
+edit-no-ingredient-name = Please specify an ingredient name (e.g., "2 cups flour" not just "2 cups").
+edit-ingredient-name-too-long = Ingredient name is too long (maximum 100 characters). Please use a shorter name.
+edit-invalid-quantity = Invalid quantity. Please use a positive number (e.g., "2.5 cups flour").
+error-invalid-edit = Invalid ingredient index for editing.
+review-help = Please reply with "confirm" to save these ingredients, or "cancel" to discard them.
 
 # Document messages
 document-image = Received image document from user {$user_id}

@@ -3,7 +3,7 @@
 //! This module contains unit tests for the localization functionality,
 //! testing message retrieval and formatting with various edge cases.
 
-use ingredients::localization::{init_localization, get_localization_manager};
+use ingredients::localization::{get_localization_manager, init_localization};
 use std::collections::HashMap;
 
 #[cfg(test)]
@@ -106,7 +106,8 @@ mod tests {
 
         // Test t_args_lang function
         let args = vec![("recipe_name", "Test Recipe"), ("ingredient_count", "3")];
-        let message_with_args = ingredients::localization::t_args_lang("recipe-complete", &args, Some("en"));
+        let message_with_args =
+            ingredients::localization::t_args_lang("recipe-complete", &args, Some("en"));
         assert!(!message_with_args.is_empty());
         assert!(message_with_args.contains("Test Recipe"));
         assert!(message_with_args.contains("3"));

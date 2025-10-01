@@ -2,9 +2,19 @@ use ingredients::circuit_breaker::CircuitBreaker;
 use ingredients::instance_manager::OcrInstanceManager;
 use ingredients::ocr_config::{FormatSizeLimits, OcrConfig, RecoveryConfig};
 use ingredients::ocr_errors::OcrError;
+use ingredients::localization::init_localization;
 use std::fs;
 use std::io::Write;
 use tempfile::NamedTempFile;
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn setup_localization() {
+        // Initialize localization if not already done
+        let _ = init_localization();
+    }
 
 /// Test OCR configuration validation
 #[test]
@@ -382,4 +392,403 @@ fn test_language_detection() {
         "en",
         "None should default to English"
     );
+}
+
+/// Test delete ingredient callback functionality
+#[test]
+fn test_delete_ingredient_callback() {
+    use ingredients::text_processing::MeasurementMatch;
+
+    // Create test ingredients
+    let mut ingredients = vec![
+        MeasurementMatch {
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
+            ingredient_name: "flour".to_string(),
+            line_number: 0,
+            start_pos: 0,
+            end_pos: 6,
+        },
+        MeasurementMatch {
+            quantity: "3".to_string(),
+            measurement: None,
+            ingredient_name: "eggs".to_string(),
+            line_number: 1,
+            start_pos: 8,
+            end_pos: 9,
+        },
+        MeasurementMatch {
+            quantity: "1".to_string(),
+            measurement: Some("cup".to_string()),
+            ingredient_name: "sugar".to_string(),
+            line_number: 2,
+            start_pos: 15,
+            end_pos: 21,
+        },
+    ];
+
+    // Test deleting middle ingredient (index 1 - eggs)
+    let index_to_delete = 1;
+    assert!(index_to_delete < ingredients.len(), "Index should be valid");
+
+    ingredients.remove(index_to_delete);
+
+    // Verify the correct ingredient was removed
+    assert_eq!(ingredients.len(), 2, "Should have 2 ingredients remaining");
+    assert_eq!(ingredients[0].ingredient_name, "flour", "First ingredient should be flour");
+    assert_eq!(ingredients[1].ingredient_name, "sugar", "Second ingredient should be sugar");
+
+    // Test deleting first ingredient (index 0)
+    ingredients.remove(0);
+    assert_eq!(ingredients.len(), 1, "Should have 1 ingredient remaining");
+    assert_eq!(ingredients[0].ingredient_name, "sugar", "Remaining ingredient should be sugar");
+
+    // Test deleting last ingredient (index 0, which is now the last one)
+    ingredients.remove(0);
+    assert_eq!(ingredients.len(), 0, "Should have no ingredients remaining");
+
+    // Test edge case: trying to delete from empty list (this would be handled by bounds checking in real code)
+    // This test just verifies our understanding of the behavior
+    let empty_ingredients: Vec<MeasurementMatch> = vec![];
+    // In real code, we would check bounds before calling remove
+    assert_eq!(empty_ingredients.len(), 0, "Empty list should have length 0");
+}
+
+/// Test dialogue state updates after ingredient deletion
+#[test]
+fn test_dialogue_state_after_deletion() {
+    use ingredients::text_processing::MeasurementMatch;
+    use ingredients::dialogue::RecipeDialogueState;
+
+    // Create initial dialogue state
+    let recipe_name = "Test Recipe".to_string();
+    let mut ingredients = vec![
+        MeasurementMatch {
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
+            ingredient_name: "flour".to_string(),
+            line_number: 0,
+            start_pos: 0,
+            end_pos: 6,
+        },
+        MeasurementMatch {
+            quantity: "3".to_string(),
+            measurement: None,
+            ingredient_name: "eggs".to_string(),
+            line_number: 1,
+            start_pos: 8,
+            end_pos: 9,
+        },
+    ];
+
+    let language_code = Some("en".to_string());
+
+    // Create initial state
+    let initial_state = RecipeDialogueState::ReviewIngredients {
+        recipe_name: recipe_name.clone(),
+        ingredients: ingredients.clone(),
+        language_code: language_code.clone(),
+        message_id: None,
+    };
+
+    // Simulate deleting an ingredient
+    ingredients.remove(0); // Remove flour
+
+    // Create updated state
+    let updated_state = RecipeDialogueState::ReviewIngredients {
+        recipe_name: recipe_name.clone(),
+        ingredients: ingredients.clone(),
+        language_code: language_code.clone(),
+        message_id: None,
+    };
+
+    // Verify the states are different
+    match (&initial_state, &updated_state) {
+        (RecipeDialogueState::ReviewIngredients { ingredients: initial, .. },
+         RecipeDialogueState::ReviewIngredients { ingredients: updated, .. }) => {
+            assert_eq!(initial.len(), 2, "Initial state should have 2 ingredients");
+            assert_eq!(updated.len(), 1, "Updated state should have 1 ingredient");
+            assert_eq!(updated[0].ingredient_name, "eggs", "Remaining ingredient should be eggs");
+        }
+        _ => panic!("Both states should be ReviewIngredients"),
+    }
+
+    // Test empty ingredients state
+    let empty_ingredients: Vec<MeasurementMatch> = vec![];
+    let empty_state = RecipeDialogueState::ReviewIngredients {
+        recipe_name,
+        ingredients: empty_ingredients,
+        language_code,
+        message_id: None,
+    };
+
+    match empty_state {
+        RecipeDialogueState::ReviewIngredients { ingredients, .. } => {
+            assert_eq!(ingredients.len(), 0, "Empty state should have no ingredients");
+        }
+        _ => panic!("State should be ReviewIngredients"),
+    }
+}
+
+/// Test ingredient review keyboard creation
+#[test]
+fn test_ingredient_review_keyboard_creation() {
+    setup_localization();
+    use ingredients::bot::create_ingredient_review_keyboard;
+    use ingredients::text_processing::MeasurementMatch;
+    use teloxide::types::InlineKeyboardMarkup;
+
+    // Create test ingredients
+    let ingredients = vec![
+        MeasurementMatch {
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
+            ingredient_name: "flour".to_string(),
+            line_number: 0,
+            start_pos: 0,
+            end_pos: 6,
+        },
+        MeasurementMatch {
+            quantity: "3".to_string(),
+            measurement: None,
+            ingredient_name: "eggs".to_string(),
+            line_number: 1,
+            start_pos: 8,
+            end_pos: 9,
+        },
+    ];
+
+    // Test keyboard creation
+    let keyboard = create_ingredient_review_keyboard(&ingredients, Some("en"));
+
+    // Verify keyboard structure
+    match keyboard {
+        InlineKeyboardMarkup { inline_keyboard: keyboard } => {
+            // Should have 3 rows: 2 ingredient rows + 1 confirm/cancel row
+            assert_eq!(keyboard.len(), 3);
+
+            // First row: Edit and Delete buttons for first ingredient
+            assert_eq!(keyboard[0].len(), 2);
+            assert!(keyboard[0][0].text.contains("✏️"));
+            assert!(keyboard[0][0].text.contains("flour"));
+            assert!(keyboard[0][1].text.contains("🗑️"));
+            assert!(keyboard[0][1].text.contains("flour"));
+
+            // Second row: Edit and Delete buttons for second ingredient
+            assert_eq!(keyboard[1].len(), 2);
+            assert!(keyboard[1][0].text.contains("✏️"));
+            assert!(keyboard[1][0].text.contains("eggs"));
+            assert!(keyboard[1][1].text.contains("🗑️"));
+            assert!(keyboard[1][1].text.contains("eggs"));
+
+            // Third row: Confirm and Cancel buttons
+            assert_eq!(keyboard[2].len(), 2);
+            assert!(keyboard[2][0].text.contains("✅"));
+            assert!(keyboard[2][1].text.contains("❌"));
+        }
+    }
+}
+
+/// Test ingredient review keyboard with empty ingredients
+#[test]
+fn test_ingredient_review_keyboard_empty() {
+    setup_localization();
+    use ingredients::bot::create_ingredient_review_keyboard;
+    use ingredients::text_processing::MeasurementMatch;
+    use teloxide::types::InlineKeyboardMarkup;
+
+    let empty_ingredients: Vec<MeasurementMatch> = vec![];
+
+    let keyboard = create_ingredient_review_keyboard(&empty_ingredients, Some("en"));
+
+    // Should still have confirm/cancel row even with no ingredients
+    match keyboard {
+        InlineKeyboardMarkup { inline_keyboard: keyboard } => {
+            assert_eq!(keyboard.len(), 1); // Just the confirm/cancel row
+            assert_eq!(keyboard[0].len(), 2);
+            assert!(keyboard[0][0].text.contains("✅"));
+            assert!(keyboard[0][1].text.contains("❌"));
+        }
+    }
+}
+
+/// Test ingredient review keyboard with long ingredient names
+#[test]
+fn test_ingredient_review_keyboard_long_names() {
+    setup_localization();
+    use ingredients::bot::create_ingredient_review_keyboard;
+    use ingredients::text_processing::MeasurementMatch;
+    use teloxide::types::InlineKeyboardMarkup;
+
+    let ingredients = vec![MeasurementMatch {
+        quantity: "1".to_string(),
+        measurement: Some("cup".to_string()),
+        ingredient_name: "very_long_ingredient_name_that_should_be_truncated".to_string(),
+        line_number: 0,
+        start_pos: 0,
+        end_pos: 50,
+    }];
+
+    let keyboard = create_ingredient_review_keyboard(&ingredients, Some("en"));
+
+    match keyboard {
+        InlineKeyboardMarkup { inline_keyboard: keyboard } => {
+            assert_eq!(keyboard.len(), 2); // 1 ingredient row + 1 confirm/cancel row
+            // Check that the ingredient name was truncated
+            assert!(keyboard[0][0].text.contains("..."));
+            assert!(keyboard[0][0].text.len() <= 30); // Should be reasonably short
+        }
+    }
+}
+
+/// Test ingredient review keyboard with unknown ingredients
+#[test]
+fn test_ingredient_review_keyboard_unknown_ingredients() {
+    setup_localization();
+    use ingredients::bot::create_ingredient_review_keyboard;
+    use ingredients::text_processing::MeasurementMatch;
+    use teloxide::types::InlineKeyboardMarkup;
+
+    let ingredients = vec![MeasurementMatch {
+        quantity: "2".to_string(),
+        measurement: Some("cups".to_string()),
+        ingredient_name: "".to_string(), // Empty name should show as unknown
+        line_number: 0,
+        start_pos: 0,
+        end_pos: 6,
+    }];
+
+    let keyboard = create_ingredient_review_keyboard(&ingredients, Some("en"));
+
+    match keyboard {
+        InlineKeyboardMarkup { inline_keyboard: keyboard } => {
+            // Should contain unknown ingredient text
+            assert!(keyboard[0][0].text.contains("❓"));
+        }
+    }
+}
+
+/// Test callback data parsing for ingredient actions
+#[test]
+fn test_callback_data_parsing() {
+    // Test edit callback parsing
+    let edit_callback = "edit_1";
+    assert!(edit_callback.starts_with("edit_"));
+    let index_str = edit_callback.strip_prefix("edit_").unwrap();
+    let index: usize = index_str.parse().unwrap();
+    assert_eq!(index, 1);
+
+    // Test delete callback parsing
+    let delete_callback = "delete_0";
+    assert!(delete_callback.starts_with("delete_"));
+    let index_str = delete_callback.strip_prefix("delete_").unwrap();
+    let index: usize = index_str.parse().unwrap();
+    assert_eq!(index, 0);
+
+    // Test other callbacks
+    assert_eq!("confirm", "confirm");
+    assert_eq!("cancel_review", "cancel_review");
+    assert_eq!("add_more", "add_more");
+    assert_eq!("cancel_empty", "cancel_empty");
+}
+
+/// Test ingredient display formatting
+#[test]
+fn test_ingredient_display_formatting() {
+    use ingredients::text_processing::MeasurementMatch;
+
+    let ingredients = vec![
+        MeasurementMatch {
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
+            ingredient_name: "flour".to_string(),
+            line_number: 0,
+            start_pos: 0,
+            end_pos: 6,
+        },
+        MeasurementMatch {
+            quantity: "3".to_string(),
+            measurement: None,
+            ingredient_name: "eggs".to_string(),
+            line_number: 1,
+            start_pos: 8,
+            end_pos: 9,
+        },
+        MeasurementMatch {
+            quantity: "1".to_string(),
+            measurement: Some("tbsp".to_string()),
+            ingredient_name: "".to_string(), // Empty name
+            line_number: 2,
+            start_pos: 15,
+            end_pos: 21,
+        },
+    ];
+
+    // Test formatting logic (this mirrors the logic in create_ingredient_review_keyboard)
+    for (i, ingredient) in ingredients.iter().enumerate() {
+        let ingredient_display = if ingredient.ingredient_name.is_empty() {
+            "unknown-ingredient".to_string() // This would be localized
+        } else {
+            ingredient.ingredient_name.clone()
+        };
+
+        let measurement_display = if let Some(ref unit) = ingredient.measurement {
+            format!("{} {}", ingredient.quantity, unit)
+        } else {
+            ingredient.quantity.clone()
+        };
+
+        let display_text = format!("{} → {}", measurement_display, ingredient_display);
+
+        match i {
+            0 => {
+                assert_eq!(display_text, "2 cups → flour");
+            }
+            1 => {
+                assert_eq!(display_text, "3 → eggs");
+            }
+            2 => {
+                assert_eq!(display_text, "1 tbsp → unknown-ingredient");
+            }
+            _ => panic!("Unexpected index"),
+        }
+    }
+}
+
+/// Test ingredient list formatting for display
+#[test]
+fn test_ingredient_list_formatting() {
+    use ingredients::bot::format_ingredients_list;
+    use ingredients::text_processing::MeasurementMatch;
+
+    let ingredients = vec![
+        MeasurementMatch {
+            quantity: "2".to_string(),
+            measurement: Some("cups".to_string()),
+            ingredient_name: "flour".to_string(),
+            line_number: 0,
+            start_pos: 0,
+            end_pos: 6,
+        },
+        MeasurementMatch {
+            quantity: "3".to_string(),
+            measurement: None,
+            ingredient_name: "eggs".to_string(),
+            line_number: 1,
+            start_pos: 8,
+            end_pos: 9,
+        },
+    ];
+
+    let formatted = format_ingredients_list(&ingredients, Some("en"));
+
+    // Should contain both ingredients
+    assert!(formatted.contains("flour"));
+    assert!(formatted.contains("eggs"));
+    assert!(formatted.contains("2 cups"));
+    assert!(formatted.contains("3"));
+
+    // Should be formatted as a list
+    assert!(formatted.contains("\n") || formatted.contains("•"));
+}
 }

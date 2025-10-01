@@ -66,7 +66,15 @@ async fn main() -> Result<()> {
             let pool = Arc::clone(&shared_pool);
             move |bot: Bot, q: CallbackQuery| {
                 let pool = Arc::clone(&pool);
-                let dialogue = RecipeDialogue::new(InMemStorage::new(), q.from.id.into());
+                // Use the chat ID from the original message that contained the inline keyboard
+                let chat_id = match &q.message {
+                    Some(msg) => match msg {
+                        teloxide::types::MaybeInaccessibleMessage::Regular(msg) => msg.chat.id,
+                        teloxide::types::MaybeInaccessibleMessage::Inaccessible(_) => ChatId::from(q.from.id),
+                    },
+                    None => ChatId::from(q.from.id),
+                };
+                let dialogue = RecipeDialogue::new(InMemStorage::new(), chat_id);
                 async move { bot::callback_handler(bot, q, pool, dialogue).await }
             }
         }));

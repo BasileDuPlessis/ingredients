@@ -354,7 +354,10 @@ mod tests {
 
         // But validate_image_with_format_limits should still pass (uses general limit)
         let result = validate_image_with_format_limits(&temp_path, &config);
-        assert!(result.is_ok(), "Validation should pass for unsupported format (uses general limit)");
+        assert!(
+            result.is_ok(),
+            "Validation should pass for unsupported format (uses general limit)"
+        );
     }
 
     #[test]

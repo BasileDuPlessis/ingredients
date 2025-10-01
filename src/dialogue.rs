@@ -18,6 +18,18 @@ pub enum RecipeDialogueState {
         recipe_name: String,
         ingredients: Vec<MeasurementMatch>,
         language_code: Option<String>,
+        message_id: Option<i32>, // ID of the review message to edit
+    },
+    EditingIngredient {
+        recipe_name: String,
+        ingredients: Vec<MeasurementMatch>,
+        editing_index: usize,
+        language_code: Option<String>,
+        message_id: Option<i32>, // ID of the review message to edit after editing
+    },
+    WaitingForRecipeNameAfterConfirm {
+        ingredients: Vec<MeasurementMatch>,
+        language_code: Option<String>,
     },
 }
 

@@ -31,8 +31,9 @@ impl LocalizationManager {
     fn create_bundle(locale: &LanguageIdentifier) -> Result<FluentBundle<FluentResource>> {
         let mut bundle = FluentBundle::new(vec![locale.clone()]);
 
-        // Load the main resource file
-        let resource_path = format!("./locales/{}/main.ftl", locale);
+        // Load the main resource file - path relative to Cargo.toml
+        let manifest_dir = std::env::var("CARGO_MANIFEST_DIR").unwrap_or_else(|_| ".".to_string());
+        let resource_path = format!("{}/locales/{}/main.ftl", manifest_dir, locale);
         if let Ok(content) = fs::read_to_string(&resource_path) {
             if let Ok(resource) = FluentResource::try_new(content) {
                 let _ = bundle.add_resource(resource);

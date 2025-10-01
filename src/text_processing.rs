@@ -330,10 +330,14 @@ impl MeasurementDetector {
                         let measurement_end = full_match.end();
                         let ingredient_name = line[measurement_end..].trim().to_string();
                         debug!(
-                            "Traditional measurement: quantity='{}', measurement='{}', ingredient='{}'",
-                            quantity, measurement, ingredient_name
-                        );
-                        (quantity.to_string(), Some(measurement.to_string()), ingredient_name)
+                        "Traditional measurement: quantity='{}', measurement='{}', ingredient='{}'",
+                        quantity, measurement, ingredient_name
+                    );
+                        (
+                            quantity.to_string(),
+                            Some(measurement.to_string()),
+                            ingredient_name,
+                        )
                     } else {
                         // Fallback: shouldn't happen with current regex
                         (quantity.to_string(), None, String::new())

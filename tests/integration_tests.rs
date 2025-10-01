@@ -54,7 +54,10 @@ fn test_quantity_only_integration() {
     assert_eq!(matches[2].ingredient_name, "lait");
 
     assert_eq!(matches[3].quantity, "2");
-    assert_eq!(matches[3].measurement, Some("cuillères à soupe".to_string()));
+    assert_eq!(
+        matches[3].measurement,
+        Some("cuillères à soupe".to_string())
+    );
     assert_eq!(matches[3].ingredient_name, "sucre");
 
     println!(
@@ -192,15 +195,10 @@ fn test_mixed_measurement_types() {
     assert!(matches.len() >= 6);
 
     // Verify different types are correctly identified
-    let traditional_measurements: Vec<_> = matches
-        .iter()
-        .filter(|m| m.measurement.is_some())
-        .collect();
+    let traditional_measurements: Vec<_> =
+        matches.iter().filter(|m| m.measurement.is_some()).collect();
 
-    let quantity_only: Vec<_> = matches
-        .iter()
-        .filter(|m| m.measurement.is_none())
-        .collect();
+    let quantity_only: Vec<_> = matches.iter().filter(|m| m.measurement.is_none()).collect();
 
     // Should have traditional measurements and quantity-only ones
     assert!(!traditional_measurements.is_empty());

@@ -89,8 +89,22 @@ review-title = Révisez vos ingrédients
 review-description = Veuillez réviser les ingrédients extraits ci-dessous. Utilisez les boutons pour modifier ou supprimer des éléments, puis confirmez quand vous êtes prêt.
 review-confirm = Confirmer et sauvegarder
 review-cancelled = ❌ Révision des ingrédients annulée. Aucun ingrédient n'a été sauvegardé.
+review-no-ingredients = Aucun ingrédient restant
+review-no-ingredients-help = Tous les ingrédients ont été supprimés. Vous pouvez ajouter plus d'ingrédients en envoyant une autre image, ou annuler cette recette.
+review-add-more = Ajouter plus d'ingrédients
+review-add-more-instructions = Envoyez une autre image avec des ingrédients pour les ajouter à cette recette.
 edit-ingredient-prompt = Entrez le texte d'ingrédient corrigé
 current-ingredient = Ingrédient actuel
+edit-empty = Le texte d'ingrédient ne peut pas être vide.
+edit-invalid-format = Format d'ingrédient invalide. Veuillez entrer quelque chose comme "2 tasses de farine" ou "3 œufs".
+edit-try-again = Veuillez réessayer avec un format d'ingrédient valide.
+edit-too-long = Le texte d'ingrédient est trop long (maximum 200 caractères). Veuillez entrer une description plus courte.
+edit-no-ingredient-name = Veuillez spécifier un nom d'ingrédient (par ex. "2 tasses de farine" et non pas seulement "2 tasses").
+edit-ingredient-name-too-long = Le nom d'ingrédient est trop long (maximum 100 caractères). Veuillez utiliser un nom plus court.
+edit-invalid-quantity = Quantité invalide. Veuillez utiliser un nombre positif (par ex. "2,5 tasses de farine").
+error-invalid-edit = Index d'ingrédient invalide pour l'édition.
+cancel = Annuler
+review-help = Veuillez répondre avec "confirm" pour sauvegarder ces ingrédients, ou "cancel" pour les annuler.
 
 # Messages de document
 document-image = Document image reçu de l'utilisateur {$user_id}
