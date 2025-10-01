@@ -86,9 +86,11 @@ recipe-complete = ✅ Recette "{$recipe_name}" sauvegardée avec succès avec {$
 
 # Messages de révision des ingrédients
 review-title = Révisez vos ingrédients
-review-description = Veuillez réviser les ingrédients extraits ci-dessous. Tapez "confirm" pour les sauvegarder, ou "cancel" pour les annuler.
-review-help = Veuillez taper "confirm" pour sauvegarder les ingrédients ou "cancel" pour les annuler.
+review-description = Veuillez réviser les ingrédients extraits ci-dessous. Utilisez les boutons pour modifier ou supprimer des éléments, puis confirmez quand vous êtes prêt.
+review-confirm = Confirmer et sauvegarder
 review-cancelled = ❌ Révision des ingrédients annulée. Aucun ingrédient n'a été sauvegardé.
+edit-ingredient-prompt = Entrez le texte d'ingrédient corrigé
+current-ingredient = Ingrédient actuel
 
 # Messages de document
 document-image = Document image reçu de l'utilisateur {$user_id}

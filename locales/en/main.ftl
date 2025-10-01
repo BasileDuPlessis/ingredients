@@ -86,9 +86,11 @@ recipe-complete = ✅ Recipe "{$recipe_name}" saved successfully with {$ingredie
 
 # Ingredient review messages
 review-title = Review Your Ingredients
-review-description = Please review the extracted ingredients below. Type "confirm" to save them, or "cancel" to discard.
-review-help = Please type "confirm" to save the ingredients or "cancel" to discard them.
+review-description = Please review the extracted ingredients below. Use the buttons to edit or delete items, then confirm when ready.
+review-confirm = Confirm and Save
 review-cancelled = ❌ Ingredient review cancelled. No ingredients were saved.
+edit-ingredient-prompt = Enter the corrected ingredient text
+current-ingredient = Current ingredient
 
 # Document messages
 document-image = Received image document from user {$user_id}

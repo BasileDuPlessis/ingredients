@@ -53,14 +53,23 @@ async fn main() -> Result<()> {
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
     // Set up the dispatcher with shared connection and dialogue support
-    let handler = dptree::entry().branch(Update::filter_message().endpoint({
-        let pool = Arc::clone(&shared_pool);
-        move |bot: Bot, msg: Message| {
-            let pool = Arc::clone(&pool);
-            let dialogue = RecipeDialogue::new(InMemStorage::new(), msg.chat.id);
-            async move { bot::message_handler(bot, msg, pool, dialogue).await }
-        }
-    }));
+    let handler = dptree::entry()
+        .branch(Update::filter_message().endpoint({
+            let pool = Arc::clone(&shared_pool);
+            move |bot: Bot, msg: Message| {
+                let pool = Arc::clone(&pool);
+                let dialogue = RecipeDialogue::new(InMemStorage::new(), msg.chat.id);
+                async move { bot::message_handler(bot, msg, pool, dialogue).await }
+            }
+        }))
+        .branch(Update::filter_callback_query().endpoint({
+            let pool = Arc::clone(&shared_pool);
+            move |bot: Bot, q: CallbackQuery| {
+                let pool = Arc::clone(&pool);
+                let dialogue = RecipeDialogue::new(InMemStorage::new(), q.from.id.into());
+                async move { bot::callback_handler(bot, q, pool, dialogue).await }
+            }
+        }));
 
     Dispatcher::builder(bot, handler)
         .enable_ctrlc_handler()

@@ -3,7 +3,7 @@ use sqlx::postgres::PgPool;
 use std::io::Write;
 use std::sync::{Arc, LazyLock};
 use teloxide::prelude::*;
-use teloxide::types::FileId;
+use teloxide::types::{FileId, InlineKeyboardButton, InlineKeyboardMarkup};
 use tempfile::NamedTempFile;
 use tracing::{debug, error, info, warn};
 
@@ -314,6 +314,56 @@ fn format_ingredients_list(
     result
 }
 
+/// Create inline keyboard for ingredient review
+fn create_ingredient_review_keyboard(
+    ingredients: &[MeasurementMatch],
+    language_code: Option<&str>,
+) -> InlineKeyboardMarkup {
+    let mut buttons = Vec::new();
+
+    // Create Edit and Delete buttons for each ingredient
+    for (i, ingredient) in ingredients.iter().enumerate() {
+        let ingredient_display = if ingredient.ingredient_name.is_empty() {
+            format!("❓ {}", t_lang("unknown-ingredient", language_code))
+        } else {
+            ingredient.ingredient_name.clone()
+        };
+
+        let measurement_display = if let Some(ref unit) = ingredient.measurement {
+            format!("{} {}", ingredient.quantity, unit)
+        } else {
+            ingredient.quantity.clone()
+        };
+
+        let display_text = format!("{} → {}", measurement_display, ingredient_display);
+        // Truncate if too long for button
+        let button_text = if display_text.len() > 20 {
+            format!("{}...", &display_text[..17])
+        } else {
+            display_text
+        };
+
+        buttons.push(vec![
+            InlineKeyboardButton::callback(
+                format!("✏️ {}", button_text),
+                format!("edit_{}", i),
+            ),
+            InlineKeyboardButton::callback(
+                format!("🗑️ {}", button_text),
+                format!("delete_{}", i),
+            ),
+        ]);
+    }
+
+    // Add Confirm button at the bottom
+    buttons.push(vec![InlineKeyboardButton::callback(
+        format!("✅ {}", t_lang("review-confirm", language_code)),
+        "confirm".to_string(),
+    )]);
+
+    InlineKeyboardMarkup::new(buttons)
+}
+
 /// Start the recipe name dialogue
 async fn start_recipe_name_dialogue(
     bot: &Bot,
@@ -367,7 +417,11 @@ async fn handle_recipe_name_input(
                 format_ingredients_list(&ingredients, language_code)
             );
 
-            bot.send_message(msg.chat.id, review_message).await?;
+            let keyboard = create_ingredient_review_keyboard(&ingredients, language_code);
+
+            bot.send_message(msg.chat.id, review_message)
+                .reply_markup(keyboard)
+                .await?;
 
             // Update dialogue state to review ingredients
             dialogue
@@ -771,6 +825,122 @@ pub async fn message_handler(
     } else {
         handle_unsupported_message(&bot, &msg).await?;
     }
+
+    Ok(())
+}
+
+/// Handle callback queries from inline keyboards
+pub async fn callback_handler(
+    bot: Bot,
+    q: CallbackQuery,
+    pool: Arc<PgPool>,
+    dialogue: RecipeDialogue,
+) -> Result<()> {
+    // Extract user's language code from Telegram
+    let language_code = q.from.language_code.as_deref();
+
+    debug!(user_id = %q.from.id, "Received callback query from user");
+
+    // Check dialogue state
+    let dialogue_state = dialogue.get().await?;
+    match dialogue_state {
+        Some(RecipeDialogueState::ReviewIngredients {
+            recipe_name,
+            mut ingredients,
+            language_code: dialogue_lang_code,
+        }) => {
+            // Use dialogue language code if available, otherwise fall back to message language
+            let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
+
+            let data = q.data.as_deref().unwrap_or("");
+            if let Some(msg) = &q.message {
+                if data.starts_with("edit_") {
+                    // Handle edit button - for now, just show a message
+                    let index: usize = data.strip_prefix("edit_").unwrap().parse().unwrap_or(0);
+                    if index < ingredients.len() {
+                        let ingredient = &ingredients[index];
+                        let edit_prompt = format!(
+                            "✏️ {}\n\n{}: **{} {}**",
+                            t_lang("edit-ingredient-prompt", effective_language_code),
+                            t_lang("current-ingredient", effective_language_code),
+                            ingredient.quantity,
+                            ingredient.measurement.as_deref().unwrap_or("")
+                        );
+                        bot.send_message(ChatId::from(q.from.id), edit_prompt).await?;
+                    }
+                } else if data.starts_with("delete_") {
+                    // Handle delete button
+                    let index: usize = data.strip_prefix("delete_").unwrap().parse().unwrap_or(0);
+                    if index < ingredients.len() {
+                        ingredients.remove(index);
+
+                        // Update the message with new keyboard
+                        let review_message = format!(
+                            "📝 **{}**\n\n{}\n\n{}",
+                            t_lang("review-title", effective_language_code),
+                            t_lang("review-description", effective_language_code),
+                            format_ingredients_list(&ingredients, effective_language_code)
+                        );
+
+                        let keyboard = create_ingredient_review_keyboard(&ingredients, effective_language_code);
+
+                        // Edit the original message
+                        bot.edit_message_text(ChatId::from(q.from.id), msg.id(), review_message)
+                            .reply_markup(keyboard)
+                            .await?;
+
+                        // Update dialogue state with modified ingredients
+                        dialogue
+                            .update(RecipeDialogueState::ReviewIngredients {
+                                recipe_name,
+                                ingredients,
+                                language_code: dialogue_lang_code,
+                            })
+                            .await?;
+                    }
+                } else if data == "confirm" {
+                    // Handle confirm button - save ingredients
+                    if let Err(e) = save_ingredients_to_database(
+                        &pool,
+                        q.from.id.0 as i64,
+                        "", // extracted_text not needed for saving
+                        &ingredients,
+                        &recipe_name,
+                        effective_language_code,
+                    )
+                    .await
+                    {
+                        error!(error = %e, "Failed to save ingredients to database");
+                        bot.send_message(
+                            ChatId::from(q.from.id),
+                            t_lang("error-processing-failed", effective_language_code),
+                        )
+                        .await?;
+                    } else {
+                        // Success! Send confirmation message
+                        let success_message = t_args_lang(
+                            "recipe-complete",
+                            &[
+                                ("recipe_name", &recipe_name),
+                                ("ingredient_count", &ingredients.len().to_string()),
+                            ],
+                            effective_language_code,
+                        );
+                        bot.send_message(ChatId::from(q.from.id), success_message).await?;
+                    }
+
+                    // End the dialogue
+                    dialogue.exit().await?;
+                }
+            }
+        }
+        _ => {
+            // Ignore callbacks for other states
+        }
+    }
+
+    // Answer the callback query to remove the loading state
+    bot.answer_callback_query(q.id).await?;
 
     Ok(())
 }
