@@ -48,8 +48,8 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             id BIGSERIAL PRIMARY KEY,
             telegram_id BIGINT UNIQUE NOT NULL,
             language_code VARCHAR(10) DEFAULT 'en',
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP
         )",
     )
     .execute(pool)
@@ -62,7 +62,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             id BIGSERIAL PRIMARY KEY,
             telegram_id BIGINT NOT NULL,
             content TEXT NOT NULL,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
         )",
     )
@@ -81,8 +81,8 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             unit VARCHAR(50),
             raw_text TEXT NOT NULL,
             recipe_name VARCHAR(255),
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
             FOREIGN KEY (ocr_entry_id) REFERENCES ocr_entries(id)
         )",
