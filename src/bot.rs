@@ -150,7 +150,7 @@ async fn download_and_process_image(
                                 message_id: Some(sent_message.id.0 as i32),
                             })
                             .await?;
-                        
+
                         info!(user_id = %chat_id, "Ingredients review interface sent successfully");
                     }
 
@@ -230,7 +230,6 @@ fn process_ingredients_and_extract_matches(
 
     matches
 }
-
 
 /// Format ingredients as a simple numbered list for review
 pub fn format_ingredients_list(
@@ -313,7 +312,6 @@ pub fn create_ingredient_review_keyboard(
     InlineKeyboardMarkup::new(buttons)
 }
 
-
 /// Handle recipe name input during dialogue
 #[allow(clippy::too_many_arguments)]
 async fn handle_recipe_name_input(
@@ -339,7 +337,8 @@ async fn handle_recipe_name_input(
 
             let keyboard = create_ingredient_review_keyboard(&ingredients, language_code);
 
-            let sent_message = bot.send_message(msg.chat.id, review_message)
+            let sent_message = bot
+                .send_message(msg.chat.id, review_message)
                 .reply_markup(keyboard)
                 .await?;
 
@@ -480,9 +479,13 @@ async fn handle_ingredient_edit_input(
 
         // If we have a message_id, edit the existing message; otherwise send a new one
         if let Some(msg_id) = message_id {
-            bot.edit_message_text(msg.chat.id, teloxide::types::MessageId(msg_id), review_message)
-                .reply_markup(keyboard)
-                .await?;
+            bot.edit_message_text(
+                msg.chat.id,
+                teloxide::types::MessageId(msg_id),
+                review_message,
+            )
+            .reply_markup(keyboard)
+            .await?;
         } else {
             bot.send_message(msg.chat.id, review_message)
                 .reply_markup(keyboard)
@@ -521,9 +524,13 @@ async fn handle_ingredient_edit_input(
 
                 // If we have a message_id, edit the existing message; otherwise send a new one
                 if let Some(msg_id) = message_id {
-                    bot.edit_message_text(msg.chat.id, teloxide::types::MessageId(msg_id), review_message)
-                        .reply_markup(keyboard)
-                        .await?;
+                    bot.edit_message_text(
+                        msg.chat.id,
+                        teloxide::types::MessageId(msg_id),
+                        review_message,
+                    )
+                    .reply_markup(keyboard)
+                    .await?;
                 } else {
                     bot.send_message(msg.chat.id, review_message)
                         .reply_markup(keyboard)
@@ -600,7 +607,7 @@ pub fn parse_ingredient_from_text(input: &str) -> Result<MeasurementMatch, &'sta
         let temp_text = format!("temp: {}", trimmed);
         let measurement_end = measurement_match.end_pos;
         let raw_ingredient_name = temp_text[measurement_end..].trim();
-        
+
         if raw_ingredient_name.is_empty() {
             return Err("edit-no-ingredient-name");
         }
@@ -621,16 +628,20 @@ pub fn parse_ingredient_from_text(input: &str) -> Result<MeasurementMatch, &'sta
         let temp_text = format!("temp: {}", trimmed);
         let quantity_start = measurement_match.start_pos;
         let mut actual_quantity = measurement_match.quantity.clone();
-        
+
         // Check if there's a minus sign before the quantity
         if quantity_start > 0 && temp_text.as_bytes()[quantity_start - 1] == b'-' {
             // Check if the minus sign is not part of another word (should be preceded by space or start)
-            let before_minus = if quantity_start > 1 { temp_text.as_bytes()[quantity_start - 2] } else { b' ' };
+            let before_minus = if quantity_start > 1 {
+                temp_text.as_bytes()[quantity_start - 2]
+            } else {
+                b' '
+            };
             if before_minus == b' ' || quantity_start == 1 {
                 actual_quantity = format!("-{}", actual_quantity);
             }
         }
-        
+
         measurement_match.quantity = actual_quantity;
 
         // Validate quantity is reasonable (not zero or negative)
@@ -1179,18 +1190,16 @@ pub async fn callback_handler(
                                 t_lang("review-no-ingredients-help", dialogue_lang_code.as_deref())
                             );
 
-                            let keyboard = InlineKeyboardMarkup::new(vec![
-                                vec![
-                                    InlineKeyboardButton::callback(
-                                        t_lang("review-add-more", dialogue_lang_code.as_deref()),
-                                        "add_more"
-                                    ),
-                                    InlineKeyboardButton::callback(
-                                        t_lang("cancel", dialogue_lang_code.as_deref()),
-                                        "cancel_empty"
-                                    ),
-                                ]
-                            ]);
+                            let keyboard = InlineKeyboardMarkup::new(vec![vec![
+                                InlineKeyboardButton::callback(
+                                    t_lang("review-add-more", dialogue_lang_code.as_deref()),
+                                    "add_more",
+                                ),
+                                InlineKeyboardButton::callback(
+                                    t_lang("cancel", dialogue_lang_code.as_deref()),
+                                    "cancel_empty",
+                                ),
+                            ]]);
 
                             // Edit the original message
                             bot.edit_message_text(ChatId::from(q.from.id), msg.id(), empty_message)
@@ -1202,7 +1211,10 @@ pub async fn callback_handler(
                                 "📝 **{}**\n\n{}\n\n{}",
                                 t_lang("review-title", dialogue_lang_code.as_deref()),
                                 t_lang("review-description", dialogue_lang_code.as_deref()),
-                                format_ingredients_list(&ingredients, dialogue_lang_code.as_deref())
+                                format_ingredients_list(
+                                    &ingredients,
+                                    dialogue_lang_code.as_deref()
+                                )
                             );
 
                             let keyboard = create_ingredient_review_keyboard(
@@ -1211,9 +1223,13 @@ pub async fn callback_handler(
                             );
 
                             // Edit the original message
-                            bot.edit_message_text(ChatId::from(q.from.id), msg.id(), review_message)
-                                .reply_markup(keyboard)
-                                .await?;
+                            bot.edit_message_text(
+                                ChatId::from(q.from.id),
+                                msg.id(),
+                                review_message,
+                            )
+                            .reply_markup(keyboard)
+                            .await?;
                         }
 
                         // Update dialogue state with modified ingredients
@@ -1248,7 +1264,10 @@ pub async fn callback_handler(
                     // Handle add more ingredients - reset to start state to allow new image
                     bot.send_message(
                         ChatId::from(q.from.id),
-                        t_lang("review-add-more-instructions", dialogue_lang_code.as_deref()),
+                        t_lang(
+                            "review-add-more-instructions",
+                            dialogue_lang_code.as_deref(),
+                        ),
                     )
                     .await?;
 

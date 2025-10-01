@@ -2,12 +2,12 @@ use anyhow::Result;
 use fluent_bundle::{FluentBundle, FluentResource};
 use std::collections::HashMap;
 use std::fs;
-use std::rc::Rc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use unic_langid::LanguageIdentifier;
 
 /// Localization manager for the Ingredients Bot
 pub struct LocalizationManager {
-    bundles: HashMap<String, Rc<FluentBundle<FluentResource>>>,
+    bundles: HashMap<String, FluentBundle<FluentResource>>,
 }
 
 impl LocalizationManager {
@@ -21,7 +21,7 @@ impl LocalizationManager {
         for locale_str in locales {
             let locale: LanguageIdentifier = locale_str.parse()?;
             let bundle = Self::create_bundle(&locale)?;
-            bundles.insert(locale_str.to_string(), Rc::new(bundle));
+            bundles.insert(locale_str.to_string(), bundle);
         }
 
         Ok(Self { bundles })
@@ -104,14 +104,17 @@ impl LocalizationManager {
     }
 }
 
-/// Global localization instance
+/// Global localization instance - not thread-safe, use with caution in multi-threaded environments
 static mut LOCALIZATION_MANAGER: Option<LocalizationManager> = None;
+static LOCALIZATION_INITIALIZED: AtomicBool = AtomicBool::new(false);
 
 /// Initialize the global localization manager
 pub fn init_localization() -> Result<()> {
-    let manager = LocalizationManager::new()?;
-    unsafe {
-        LOCALIZATION_MANAGER = Some(manager);
+    if !LOCALIZATION_INITIALIZED.load(Ordering::SeqCst) {
+        unsafe {
+            LOCALIZATION_MANAGER = Some(LocalizationManager::new()?);
+        }
+        LOCALIZATION_INITIALIZED.store(true, Ordering::SeqCst);
     }
     Ok(())
 }

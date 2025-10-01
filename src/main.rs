@@ -70,7 +70,9 @@ async fn main() -> Result<()> {
                 let chat_id = match &q.message {
                     Some(msg) => match msg {
                         teloxide::types::MaybeInaccessibleMessage::Regular(msg) => msg.chat.id,
-                        teloxide::types::MaybeInaccessibleMessage::Inaccessible(_) => ChatId::from(q.from.id),
+                        teloxide::types::MaybeInaccessibleMessage::Inaccessible(_) => {
+                            ChatId::from(q.from.id)
+                        }
                     },
                     None => ChatId::from(q.from.id),
                 };

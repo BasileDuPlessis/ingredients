@@ -3,22 +3,21 @@
 //! This module contains unit tests for the localization functionality,
 //! testing message retrieval and formatting with various edge cases.
 
-use ingredients::localization::{get_localization_manager, init_localization};
+use ingredients::localization::LocalizationManager;
 use std::collections::HashMap;
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    fn setup_localization() {
-        // Initialize localization if not already done
-        let _ = init_localization();
+    fn setup_localization() -> LocalizationManager {
+        // Create a new localization manager for each test
+        LocalizationManager::new().expect("Failed to create localization manager")
     }
 
     #[test]
     fn test_get_message_existing_key() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         let message = manager.get_message_in_language("help-commands", "en", None);
         assert!(!message.is_empty());
@@ -27,8 +26,7 @@ mod tests {
 
     #[test]
     fn test_get_message_nonexistent_key() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         let message = manager.get_message_in_language("nonexistent-key", "en", None);
         assert!(message.starts_with("Missing translation:"));
@@ -36,8 +34,7 @@ mod tests {
 
     #[test]
     fn test_get_message_unsupported_language() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         let message = manager.get_message_in_language("help-commands", "unsupported", None);
         // Should fall back to English
@@ -47,8 +44,7 @@ mod tests {
 
     #[test]
     fn test_get_message_with_args() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         let mut args = HashMap::new();
         args.insert("recipe_name", "Test Recipe");
@@ -62,8 +58,7 @@ mod tests {
 
     #[test]
     fn test_get_message_missing_args() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         // Test with missing required args - should handle gracefully
         let message = manager.get_message_in_language("recipe-complete", "en", None);
@@ -73,8 +68,7 @@ mod tests {
 
     #[test]
     fn test_french_localization() {
-        setup_localization();
-        let manager = get_localization_manager();
+        let manager = setup_localization();
 
         let message = manager.get_message_in_language("help-commands", "fr", None);
         assert!(!message.is_empty());
@@ -98,7 +92,8 @@ mod tests {
 
     #[test]
     fn test_convenience_functions() {
-        setup_localization();
+        // Initialize the global localization manager for this test
+        ingredients::localization::init_localization().expect("Failed to initialize localization");
 
         // Test t_lang function
         let message = ingredients::localization::t_lang("help-commands", Some("en"));
