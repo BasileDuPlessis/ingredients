@@ -17,7 +17,7 @@ Manages Telegram user accounts and preferences.
 
 | Column       | Type          | Constraints                    | Description                          |
 |--------------|---------------|-------------------------------|--------------------------------------|
-| id           | SERIAL        | PRIMARY KEY                   | Internal user identifier             |
+| id           | BIGSERIAL     | PRIMARY KEY                   | Internal user identifier             |
 | telegram_id  | BIGINT        | UNIQUE NOT NULL               | Telegram user ID                     |
 | language_code| VARCHAR(10)   | DEFAULT 'en'                  | User language preference (en/fr)     |
 | created_at   | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP     | Account creation timestamp           |
@@ -32,7 +32,7 @@ Stores complete OCR-extracted text for audit and search purposes.
 
 | Column       | Type          | Constraints                    | Description                          |
 |--------------|---------------|-------------------------------|--------------------------------------|
-| id           | SERIAL        | PRIMARY KEY                   | OCR entry identifier                 |
+| id           | BIGSERIAL     | PRIMARY KEY                   | OCR entry identifier                 |
 | telegram_id  | BIGINT        | NOT NULL                      | Telegram user ID (for filtering)     |
 | content      | TEXT          | NOT NULL                      | Full OCR-extracted text              |
 | created_at   | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP     | OCR processing timestamp             |
@@ -48,7 +48,7 @@ Stores parsed ingredient data with optional OCR linkage.
 
 | Column       | Type          | Constraints                    | Description                          |
 |--------------|---------------|-------------------------------|--------------------------------------|
-| id           | SERIAL        | PRIMARY KEY                   | Ingredient identifier                |
+| id           | BIGSERIAL     | PRIMARY KEY                   | Ingredient identifier                |
 | user_id      | BIGINT        | NOT NULL REFERENCES users(id) | Owner user ID                        |
 | ocr_entry_id | BIGINT        | REFERENCES ocr_entries(id)    | Source OCR entry (optional)          |
 | name         | VARCHAR(255)  | NOT NULL                      | Ingredient name                      |

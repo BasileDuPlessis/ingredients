@@ -1138,6 +1138,8 @@ pub async fn callback_handler(
 
     // Check dialogue state
     let dialogue_state = dialogue.get().await?;
+    debug!(user_id = %q.from.id, dialogue_state = ?dialogue_state, "Retrieved dialogue state");
+
     match dialogue_state {
         Some(RecipeDialogueState::ReviewIngredients {
             recipe_name,
@@ -1160,7 +1162,7 @@ pub async fn callback_handler(
                             ingredient.measurement.as_deref().unwrap_or(""),
                             ingredient.ingredient_name
                         );
-                        bot.send_message(ChatId::from(q.from.id), edit_prompt)
+                        bot.send_message(msg.chat().id, edit_prompt)
                             .await?;
 
                         // Transition to editing state
@@ -1177,6 +1179,7 @@ pub async fn callback_handler(
                 } else if data.starts_with("delete_") {
                     // Handle delete button
                     let index: usize = data.strip_prefix("delete_").unwrap().parse().unwrap_or(0);
+
                     if index < ingredients.len() {
                         ingredients.remove(index);
 
@@ -1202,9 +1205,12 @@ pub async fn callback_handler(
                             ]]);
 
                             // Edit the original message
-                            bot.edit_message_text(ChatId::from(q.from.id), msg.id(), empty_message)
+                            match bot.edit_message_text(msg.chat().id, msg.id(), empty_message)
                                 .reply_markup(keyboard)
-                                .await?;
+                                .await {
+                                Ok(_) => (),
+                                Err(e) => error!(user_id = %q.from.id, error = %e, "Failed to edit message for empty ingredients"),
+                            }
                         } else {
                             // Update the message with remaining ingredients
                             let review_message = format!(
@@ -1223,24 +1229,32 @@ pub async fn callback_handler(
                             );
 
                             // Edit the original message
-                            bot.edit_message_text(
-                                ChatId::from(q.from.id),
+                            match bot.edit_message_text(
+                                msg.chat().id,
                                 msg.id(),
                                 review_message,
                             )
                             .reply_markup(keyboard)
-                            .await?;
+                            .await {
+                                Ok(_) => (),
+                                Err(e) => error!(user_id = %q.from.id, error = %e, "Failed to edit message after ingredient deletion"),
+                            }
                         }
 
                         // Update dialogue state with modified ingredients
-                        dialogue
+                        match dialogue
                             .update(RecipeDialogueState::ReviewIngredients {
                                 recipe_name: recipe_name.clone(),
                                 ingredients: ingredients.clone(),
                                 language_code: dialogue_lang_code.clone(),
                                 message_id,
                             })
-                            .await?;
+                            .await {
+                            Ok(_) => (),
+                            Err(e) => error!(user_id = %q.from.id, error = %e, "Failed to update dialogue state after deletion"),
+                        }
+                    } else {
+                        // Invalid index - ignore silently
                     }
                 } else if data == "confirm" {
                     // Handle confirm button - proceed to recipe name input
@@ -1250,7 +1264,7 @@ pub async fn callback_handler(
                         t_lang("recipe-name-prompt-hint", dialogue_lang_code.as_deref())
                     );
 
-                    bot.send_message(ChatId::from(q.from.id), recipe_name_prompt)
+                    bot.send_message(msg.chat().id, recipe_name_prompt)
                         .await?;
 
                     // Transition to waiting for recipe name after confirmation
@@ -1263,7 +1277,7 @@ pub async fn callback_handler(
                 } else if data == "add_more" {
                     // Handle add more ingredients - reset to start state to allow new image
                     bot.send_message(
-                        ChatId::from(q.from.id),
+                        msg.chat().id,
                         t_lang(
                             "review-add-more-instructions",
                             dialogue_lang_code.as_deref(),
@@ -1276,7 +1290,7 @@ pub async fn callback_handler(
                 } else if data == "cancel_review" {
                     // Handle cancel button - end dialogue without saving
                     bot.send_message(
-                        ChatId::from(q.from.id),
+                        msg.chat().id,
                         t_lang("review-cancelled", dialogue_lang_code.as_deref()),
                     )
                     .await?;

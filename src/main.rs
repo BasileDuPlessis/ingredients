@@ -1,7 +1,7 @@
 use anyhow::Result;
 use ingredients::bot;
 use ingredients::db;
-use ingredients::dialogue::RecipeDialogue;
+use ingredients::dialogue::{RecipeDialogue, RecipeDialogueState};
 use ingredients::localization;
 use sqlx::postgres::PgPool;
 use std::env;
@@ -52,20 +52,27 @@ async fn main() -> Result<()> {
 
     info!("Bot initialized with 30s timeout, starting dispatcher");
 
+        // Create shared dialogue storage
+    let dialogue_storage = InMemStorage::<RecipeDialogueState>::new();
+
     // Set up the dispatcher with shared connection and dialogue support
     let handler = dptree::entry()
         .branch(Update::filter_message().endpoint({
             let pool = Arc::clone(&shared_pool);
+            let storage = dialogue_storage.clone();
             move |bot: Bot, msg: Message| {
                 let pool = Arc::clone(&pool);
-                let dialogue = RecipeDialogue::new(InMemStorage::new(), msg.chat.id);
+                let storage = storage.clone();
+                let dialogue = RecipeDialogue::new(storage, msg.chat.id);
                 async move { bot::message_handler(bot, msg, pool, dialogue).await }
             }
         }))
         .branch(Update::filter_callback_query().endpoint({
             let pool = Arc::clone(&shared_pool);
+            let storage = dialogue_storage.clone();
             move |bot: Bot, q: CallbackQuery| {
                 let pool = Arc::clone(&pool);
+                let storage = storage.clone();
                 // Use the chat ID from the original message that contained the inline keyboard
                 let chat_id = match &q.message {
                     Some(msg) => match msg {
@@ -76,7 +83,7 @@ async fn main() -> Result<()> {
                     },
                     None => ChatId::from(q.from.id),
                 };
-                let dialogue = RecipeDialogue::new(InMemStorage::new(), chat_id);
+                let dialogue = RecipeDialogue::new(storage, chat_id);
                 async move { bot::callback_handler(bot, q, pool, dialogue).await }
             }
         }));

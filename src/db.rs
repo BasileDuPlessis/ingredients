@@ -45,7 +45,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     // Create users table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS users (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             telegram_id BIGINT UNIQUE NOT NULL,
             language_code VARCHAR(10) DEFAULT 'en',
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -59,7 +59,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     // Create OCR entries table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS ocr_entries (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             telegram_id BIGINT NOT NULL,
             content TEXT NOT NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
@@ -73,7 +73,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
     // Create ingredients table
     sqlx::query(
         "CREATE TABLE IF NOT EXISTS ingredients (
-            id SERIAL PRIMARY KEY,
+            id BIGSERIAL PRIMARY KEY,
             user_id BIGINT NOT NULL REFERENCES users(id),
             ocr_entry_id BIGINT REFERENCES ocr_entries(id),
             name VARCHAR(255) NOT NULL,
