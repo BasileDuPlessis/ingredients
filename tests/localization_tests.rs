@@ -79,7 +79,8 @@ mod tests {
 
     #[test]
     fn test_language_detection() {
-        setup_localization();
+        // Initialize the global localization manager for this test
+        ingredients::localization::init_localization().expect("Failed to initialize localization");
         use ingredients::localization::detect_language;
 
         assert_eq!(detect_language(Some("en")), "en");
