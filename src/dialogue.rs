@@ -14,6 +14,11 @@ pub enum RecipeDialogueState {
         ingredients: Vec<MeasurementMatch>,
         language_code: Option<String>,
     },
+    ReviewIngredients {
+        recipe_name: String,
+        ingredients: Vec<MeasurementMatch>,
+        language_code: Option<String>,
+    },
 }
 
 /// Type alias for our recipe dialogue

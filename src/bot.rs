@@ -283,6 +283,37 @@ fn format_ingredients_summary(
     result
 }
 
+/// Format ingredients as a simple numbered list for review
+fn format_ingredients_list(
+    ingredients: &[MeasurementMatch],
+    language_code: Option<&str>,
+) -> String {
+    let mut result = String::new();
+
+    for (i, ingredient) in ingredients.iter().enumerate() {
+        let ingredient_display = if ingredient.ingredient_name.is_empty() {
+            format!("❓ {}", t_lang("unknown-ingredient", language_code))
+        } else {
+            ingredient.ingredient_name.clone()
+        };
+
+        let measurement_display = if let Some(ref unit) = ingredient.measurement {
+            format!("{} {}", ingredient.quantity, unit)
+        } else {
+            ingredient.quantity.clone()
+        };
+
+        result.push_str(&format!(
+            "{}. **{}** → {}\n",
+            i + 1,
+            measurement_display,
+            ingredient_display
+        ));
+    }
+
+    result
+}
+
 /// Start the recipe name dialogue
 async fn start_recipe_name_dialogue(
     bot: &Bot,
@@ -319,47 +350,33 @@ async fn handle_recipe_name_input(
     bot: &Bot,
     msg: &Message,
     dialogue: RecipeDialogue,
-    pool: Arc<PgPool>,
+    _pool: Arc<PgPool>,
     recipe_name_input: &str,
-    extracted_text: String,
+    _extracted_text: String,
     ingredients: Vec<MeasurementMatch>,
     language_code: Option<&str>,
 ) -> Result<()> {
     // Validate recipe name
     match validate_recipe_name(recipe_name_input) {
         Ok(validated_name) => {
-            // Recipe name is valid, save ingredients to database
-            if let Err(e) = save_ingredients_to_database(
-                &pool,
-                msg.chat.id.0,
-                &extracted_text,
-                &ingredients,
-                &validated_name,
-                language_code,
-            )
-            .await
-            {
-                error!(error = %e, "Failed to save ingredients to database");
-                bot.send_message(
-                    msg.chat.id,
-                    t_lang("error-processing-failed", language_code),
-                )
-                .await?;
-            } else {
-                // Success! Send confirmation message
-                let success_message = t_args_lang(
-                    "recipe-complete",
-                    &[
-                        ("recipe_name", &validated_name),
-                        ("ingredient_count", &ingredients.len().to_string()),
-                    ],
-                    language_code,
-                );
-                bot.send_message(msg.chat.id, success_message).await?;
-            }
+            // Recipe name is valid, transition to ingredient review state
+            let review_message = format!(
+                "📝 **{}**\n\n{}\n\n{}",
+                t_lang("review-title", language_code),
+                t_lang("review-description", language_code),
+                format_ingredients_list(&ingredients, language_code)
+            );
 
-            // End the dialogue
-            dialogue.exit().await?;
+            bot.send_message(msg.chat.id, review_message).await?;
+
+            // Update dialogue state to review ingredients
+            dialogue
+                .update(RecipeDialogueState::ReviewIngredients {
+                    recipe_name: validated_name,
+                    ingredients,
+                    language_code: language_code.map(|s| s.to_string()),
+                })
+                .await?;
         }
         Err("empty") => {
             bot.send_message(msg.chat.id, t_lang("recipe-name-invalid", language_code))
@@ -375,6 +392,76 @@ async fn handle_recipe_name_input(
             bot.send_message(msg.chat.id, t_lang("recipe-name-invalid", language_code))
                 .await?;
             // Keep dialogue active, user can try again
+        }
+    }
+
+    Ok(())
+}
+
+/// Handle ingredient review input during dialogue
+#[allow(clippy::too_many_arguments)]
+async fn handle_ingredient_review_input(
+    bot: &Bot,
+    msg: &Message,
+    dialogue: RecipeDialogue,
+    _pool: Arc<PgPool>,
+    review_input: &str,
+    recipe_name: String,
+    ingredients: Vec<MeasurementMatch>,
+    language_code: Option<&str>,
+) -> Result<()> {
+    let input = review_input.trim().to_lowercase();
+
+    match input.as_str() {
+        "confirm" | "ok" | "yes" | "save" => {
+            // User confirmed, save ingredients to database
+            if let Err(e) = save_ingredients_to_database(
+                &_pool,
+                msg.chat.id.0,
+                "", // extracted_text not needed for saving
+                &ingredients,
+                &recipe_name,
+                language_code,
+            )
+            .await
+            {
+                error!(error = %e, "Failed to save ingredients to database");
+                bot.send_message(
+                    msg.chat.id,
+                    t_lang("error-processing-failed", language_code),
+                )
+                .await?;
+            } else {
+                // Success! Send confirmation message
+                let success_message = t_args_lang(
+                    "recipe-complete",
+                    &[
+                        ("recipe_name", &recipe_name),
+                        ("ingredient_count", &ingredients.len().to_string()),
+                    ],
+                    language_code,
+                );
+                bot.send_message(msg.chat.id, success_message).await?;
+            }
+
+            // End the dialogue
+            dialogue.exit().await?;
+        }
+        "cancel" | "stop" => {
+            // User cancelled, end dialogue without saving
+            bot.send_message(msg.chat.id, t_lang("review-cancelled", language_code))
+                .await?;
+            dialogue.exit().await?;
+        }
+        _ => {
+            // Unknown command, show help
+            let help_message = format!(
+                "{}\n\n{}",
+                t_lang("review-help", language_code),
+                format_ingredients_list(&ingredients, language_code)
+            );
+            bot.send_message(msg.chat.id, help_message).await?;
+            // Keep dialogue active
         }
     }
 
@@ -486,6 +573,27 @@ async fn handle_text_message(
                     pool,
                     text,
                     extracted_text,
+                    ingredients,
+                    effective_language_code,
+                )
+                .await;
+            }
+            Some(RecipeDialogueState::ReviewIngredients {
+                recipe_name,
+                ingredients,
+                language_code: dialogue_lang_code,
+            }) => {
+                // Use dialogue language code if available, otherwise fall back to message language
+                let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
+
+                // Handle ingredient review commands
+                return handle_ingredient_review_input(
+                    bot,
+                    msg,
+                    dialogue,
+                    pool,
+                    text,
+                    recipe_name,
                     ingredients,
                     effective_language_code,
                 )

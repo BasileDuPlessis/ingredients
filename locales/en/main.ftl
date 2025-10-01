@@ -84,6 +84,12 @@ recipe-name-invalid = ❌ Recipe name cannot be empty. Please enter a valid name
 recipe-name-too-long = ❌ Recipe name is too long (maximum 255 characters). Please enter a shorter name.
 recipe-complete = ✅ Recipe "{$recipe_name}" saved successfully with {$ingredient_count} ingredients!
 
+# Ingredient review messages
+review-title = Review Your Ingredients
+review-description = Please review the extracted ingredients below. Type "confirm" to save them, or "cancel" to discard.
+review-help = Please type "confirm" to save the ingredients or "cancel" to discard them.
+review-cancelled = ❌ Ingredient review cancelled. No ingredients were saved.
+
 # Document messages
 document-image = Received image document from user {$user_id}
 document-non-image = Received non-image document from user {$user_id}

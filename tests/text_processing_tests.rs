@@ -571,11 +571,11 @@ mod tests {
         let text = "2 cups flour\n500g sugar\n1 tablespoon vanilla\n250 ml milk\n3 eggs";
         let units = detector.get_unique_units(text);
         assert_eq!(units.len(), 5); // 2 cups, 500g, 1 tablespoon, 250 ml, 3 eggs
-        assert!(units.contains(&"2 cups".to_string()));
-        assert!(units.contains(&"500g".to_string()));
-        assert!(units.contains(&"1 tablespoon".to_string()));
-        assert!(units.contains(&"250 ml".to_string()));
-        assert!(units.contains(&"3 eggs".to_string()));
+        assert!(units.contains("2 cups"));
+        assert!(units.contains("500g"));
+        assert!(units.contains("1 tablespoon"));
+        assert!(units.contains("250 ml"));
+        assert!(units.contains("3 eggs"));
 
         // Test empty text
         let empty_units = detector.get_unique_units("");
@@ -589,8 +589,8 @@ mod tests {
         let duplicate_text = "1 cup flour\n2 cups sugar\n3 cups milk";
         let duplicate_units = detector.get_unique_units(duplicate_text);
         assert_eq!(duplicate_units.len(), 3); // "1 cup", "2 cups", "3 cups" - all different
-        assert!(duplicate_units.contains(&"1 cup".to_string()));
-        assert!(duplicate_units.contains(&"2 cups".to_string()));
-        assert!(duplicate_units.contains(&"3 cups".to_string()));
+        assert!(duplicate_units.contains("1 cup"));
+        assert!(duplicate_units.contains("2 cups"));
+        assert!(duplicate_units.contains("3 cups"));
     }
 }

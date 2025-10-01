@@ -84,6 +84,12 @@ recipe-name-invalid = ❌ Le nom de recette ne peut pas être vide. Veuillez ent
 recipe-name-too-long = ❌ Le nom de recette est trop long (maximum 255 caractères). Veuillez entrer un nom plus court.
 recipe-complete = ✅ Recette "{$recipe_name}" sauvegardée avec succès avec {$ingredient_count} ingrédients !
 
+# Messages de révision des ingrédients
+review-title = Révisez vos ingrédients
+review-description = Veuillez réviser les ingrédients extraits ci-dessous. Tapez "confirm" pour les sauvegarder, ou "cancel" pour les annuler.
+review-help = Veuillez taper "confirm" pour sauvegarder les ingrédients ou "cancel" pour les annuler.
+review-cancelled = ❌ Révision des ingrédients annulée. Aucun ingrédient n'a été sauvegardé.
+
 # Messages de document
 document-image = Document image reçu de l'utilisateur {$user_id}
 document-non-image = Document non-image reçu de l'utilisateur {$user_id}
