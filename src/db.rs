@@ -20,6 +20,7 @@ pub struct OcrEntry {
     pub id: i64,
     pub telegram_id: i64,
     pub content: String,
+    pub recipe_name: Option<String>,
     pub created_at: DateTime<Utc>,
 }
 
@@ -33,7 +34,6 @@ pub struct Ingredient {
     pub quantity: Option<f64>,
     pub unit: Option<String>,
     pub raw_text: String,
-    pub recipe_name: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -62,6 +62,7 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             id BIGSERIAL PRIMARY KEY,
             telegram_id BIGINT NOT NULL,
             content TEXT NOT NULL,
+            recipe_name VARCHAR(255),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             content_tsv tsvector GENERATED ALWAYS AS (to_tsvector('english', content)) STORED
         )",
@@ -80,7 +81,6 @@ pub async fn init_database_schema(pool: &PgPool) -> Result<()> {
             quantity DECIMAL(10,3),
             unit VARCHAR(50),
             raw_text TEXT NOT NULL,
-            recipe_name VARCHAR(255),
             created_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             updated_at TIMESTAMPTZ DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (user_id) REFERENCES users(id),
@@ -150,6 +150,7 @@ pub async fn read_ocr_entry(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEn
                 id: row.get(0),
                 telegram_id: row.get(1),
                 content: row.get(2),
+                recipe_name: None, // For backward compatibility, existing entries have no recipe name
                 created_at: row.get(3),
             };
             debug!(entry_id = %entry_id, "OCR entry found");
@@ -309,12 +310,11 @@ pub async fn create_ingredient(
     quantity: Option<f64>,
     unit: Option<&str>,
     raw_text: &str,
-    recipe_name: Option<&str>,
 ) -> Result<i64> {
     info!("Creating new ingredient for user_id: {user_id}");
 
     let row = sqlx::query(
-        "INSERT INTO ingredients (user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name) VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING id"
+        "INSERT INTO ingredients (user_id, ocr_entry_id, name, quantity, unit, raw_text) VALUES ($1, $2, $3, $4, $5, $6) RETURNING id"
     )
     .bind(user_id)
     .bind(ocr_entry_id)
@@ -322,7 +322,6 @@ pub async fn create_ingredient(
     .bind(quantity)
     .bind(unit)
     .bind(raw_text)
-    .bind(recipe_name)
     .fetch_one(pool)
     .await
     .context("Failed to insert new ingredient")?;
@@ -337,7 +336,7 @@ pub async fn create_ingredient(
 pub async fn read_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<Option<Ingredient>> {
     info!("Reading ingredient with ID: {ingredient_id}");
 
-    let row = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name, created_at, updated_at FROM ingredients WHERE id = $1")
+    let row = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, created_at, updated_at FROM ingredients WHERE id = $1")
         .bind(ingredient_id)
         .fetch_optional(pool)
         .await
@@ -353,9 +352,8 @@ pub async fn read_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<Option
                 quantity: row.get(4),
                 unit: row.get(5),
                 raw_text: row.get(6),
-                recipe_name: row.get(7),
-                created_at: row.get(8),
-                updated_at: row.get(9),
+                created_at: row.get(7),
+                updated_at: row.get(8),
             };
             info!("Ingredient found with ID: {ingredient_id}");
             Ok(Some(ingredient))
@@ -375,16 +373,14 @@ pub async fn update_ingredient(
     quantity: Option<f64>,
     unit: Option<&str>,
     raw_text: &str,
-    recipe_name: Option<&str>,
 ) -> Result<bool> {
     info!("Updating ingredient with ID: {ingredient_id}");
 
-    let result = sqlx::query("UPDATE ingredients SET name = COALESCE($1, name), quantity = COALESCE($2, quantity), unit = COALESCE($3, unit), raw_text = $4, recipe_name = COALESCE($5, recipe_name), updated_at = CURRENT_TIMESTAMP WHERE id = $6")
+    let result = sqlx::query("UPDATE ingredients SET name = COALESCE($1, name), quantity = COALESCE($2, quantity), unit = COALESCE($3, unit), raw_text = $4, updated_at = CURRENT_TIMESTAMP WHERE id = $5")
         .bind(name)
         .bind(quantity)
         .bind(unit)
         .bind(raw_text)
-        .bind(recipe_name)
         .bind(ingredient_id)
         .execute(pool)
         .await
@@ -424,7 +420,7 @@ pub async fn delete_ingredient(pool: &PgPool, ingredient_id: i64) -> Result<bool
 pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec<Ingredient>> {
     info!("Listing ingredients for user_id: {user_id}");
 
-    let rows = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, recipe_name, created_at, updated_at FROM ingredients WHERE user_id = $1 ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id, user_id, ocr_entry_id, name, quantity, unit, raw_text, created_at, updated_at FROM ingredients WHERE user_id = $1 ORDER BY created_at DESC")
         .bind(user_id)
         .fetch_all(pool)
         .await
@@ -440,9 +436,8 @@ pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec
             quantity: row.get(4),
             unit: row.get(5),
             raw_text: row.get(6),
-            recipe_name: row.get(7),
-            created_at: row.get(8),
-            updated_at: row.get(9),
+            created_at: row.get(7),
+            updated_at: row.get(8),
         })
         .collect();
 
@@ -453,6 +448,60 @@ pub async fn list_ingredients_by_user(pool: &PgPool, user_id: i64) -> Result<Vec
     Ok(ingredients)
 }
 
+/// Update the recipe name for an OCR entry
+pub async fn update_ocr_entry_recipe_name(
+    pool: &PgPool,
+    entry_id: i64,
+    recipe_name: &str,
+) -> Result<bool> {
+    debug!(entry_id = %entry_id, "Updating OCR entry recipe name");
+
+    let result = sqlx::query("UPDATE ocr_entries SET recipe_name = $1 WHERE id = $2")
+        .bind(recipe_name)
+        .bind(entry_id)
+        .execute(pool)
+        .await
+        .context("Failed to update OCR entry recipe name")?;
+
+    let rows_affected = result.rows_affected();
+    if rows_affected > 0 {
+        debug!(entry_id = %entry_id, "OCR entry recipe name updated successfully");
+        Ok(true)
+    } else {
+        info!("No OCR entry found with ID: {entry_id}");
+        Ok(false)
+    }
+}
+
+/// Get OCR entry with recipe name
+pub async fn read_ocr_entry_with_recipe(pool: &PgPool, entry_id: i64) -> Result<Option<OcrEntry>> {
+    debug!(entry_id = %entry_id, "Reading OCR entry with recipe name");
+
+    let row = sqlx::query("SELECT id, telegram_id, content, recipe_name, created_at FROM ocr_entries WHERE id = $1")
+        .bind(entry_id)
+        .fetch_optional(pool)
+        .await
+        .context("Failed to read OCR entry with recipe")?;
+
+    match row {
+        Some(row) => {
+            let entry = OcrEntry {
+                id: row.get(0),
+                telegram_id: row.get(1),
+                content: row.get(2),
+                recipe_name: row.get(3),
+                created_at: row.get(4),
+            };
+            debug!(entry_id = %entry_id, "OCR entry with recipe found");
+            Ok(Some(entry))
+        }
+        None => {
+            debug!(entry_id = %entry_id, "No OCR entry found");
+            Ok(None)
+        }
+    }
+}
+
 /// Search OCR entries using full-text search
 pub async fn search_ocr_entries(
     pool: &PgPool,
@@ -461,7 +510,7 @@ pub async fn search_ocr_entries(
 ) -> Result<Vec<OcrEntry>> {
     info!("Searching OCR entries for telegram_id: {telegram_id} with query: {query}");
 
-    let rows = sqlx::query("SELECT id, telegram_id, content, created_at FROM ocr_entries WHERE telegram_id = $1 AND content_tsv @@ plainto_tsquery('english', $2) ORDER BY created_at DESC")
+    let rows = sqlx::query("SELECT id, telegram_id, content, recipe_name, created_at FROM ocr_entries WHERE telegram_id = $1 AND content_tsv @@ plainto_tsquery('english', $2) ORDER BY created_at DESC")
         .bind(telegram_id)
         .bind(query)
         .fetch_all(pool)
@@ -474,7 +523,8 @@ pub async fn search_ocr_entries(
             id: row.get(0),
             telegram_id: row.get(1),
             content: row.get(2),
-            created_at: row.get(3),
+            recipe_name: row.get(3),
+            created_at: row.get(4),
         })
         .collect();
 

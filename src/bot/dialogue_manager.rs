@@ -16,7 +16,7 @@ use crate::text_processing::{MeasurementDetector, MeasurementMatch};
 use crate::dialogue::{validate_recipe_name, RecipeDialogue, RecipeDialogueState};
 
 // Import database types
-use crate::db::{create_ingredient, create_ocr_entry, get_or_create_user};
+use crate::db::{create_ingredient, create_ocr_entry, get_or_create_user, update_ocr_entry_recipe_name};
 
 // Import UI builder functions
 use super::ui_builder::{format_ingredients_list, create_ingredient_review_keyboard};
@@ -533,6 +533,9 @@ pub async fn save_ingredients_to_database(
     // Create OCR entry
     let ocr_entry_id = create_ocr_entry(pool, telegram_id, extracted_text).await?;
 
+    // Update OCR entry with recipe name
+    update_ocr_entry_recipe_name(pool, ocr_entry_id, recipe_name).await?;
+
     // Save each ingredient
     for ingredient in ingredients {
         // Parse quantity from string (handle fractions)
@@ -554,7 +557,6 @@ pub async fn save_ingredients_to_database(
             quantity,
             unit,
             &raw_text,
-            Some(recipe_name),
         )
         .await?;
     }

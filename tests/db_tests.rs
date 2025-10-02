@@ -126,7 +126,6 @@ async fn test_ingredient_operations_impl(pool: &PgPool) -> Result<()> {
         Some(2.0),
         Some("cups"),
         "flour 2 cups",
-        Some("Test Recipe"),
     )
     .await?;
     assert!(ingredient_id > 0);
@@ -149,7 +148,6 @@ async fn test_ingredient_operations_impl(pool: &PgPool) -> Result<()> {
         Some(3.0),
         Some("cups"),
         "bread flour 3 cups",
-        Some("Updated Test Recipe"),
     )
     .await?;
     assert!(updated);

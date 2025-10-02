@@ -1,7 +1,7 @@
 # Data Model for Ingredients Telegram Bot
 
 ## Overview
-This document defines the PostgreSQL database schema for the Ingredients Telegram bot. The schema supports user management, OCR text extraction, and ingredient parsing with full-text search capabilities.
+This document defines the PostgreSQL database schema for the Ingredients Telegram bot. The schema supports user management, OCR text extraction, recipe organization, and ingredient parsing with full-text search capabilities.
 
 ## Architecture Principles
 
@@ -27,14 +27,15 @@ Manages Telegram user accounts and preferences.
 - Primary key on `id`
 - Unique index on `telegram_id`
 
-### 2. OCR Entries Table
-Stores complete OCR-extracted text for audit and search purposes.
+### 2. OCR Entries Table (Recipes)
+Stores complete OCR-extracted text and recipe information for audit and search purposes.
 
 | Column       | Type          | Constraints                    | Description                          |
 |--------------|---------------|-------------------------------|--------------------------------------|
-| id           | BIGSERIAL     | PRIMARY KEY                   | OCR entry identifier                 |
+| id           | BIGSERIAL     | PRIMARY KEY                   | OCR entry/recipe identifier          |
 | telegram_id  | BIGINT        | NOT NULL                      | Telegram user ID (for filtering)     |
 | content      | TEXT          | NOT NULL                      | Full OCR-extracted text              |
+| recipe_name  | VARCHAR(255)  | NULL                          | User-defined recipe name (blank by default) |
 | created_at   | TIMESTAMP     | DEFAULT CURRENT_TIMESTAMP     | OCR processing timestamp             |
 | content_tsv  | tsvector      | GENERATED ALWAYS AS (to_tsvector('english', content)) STORED | Full-text search vector |
 
@@ -44,13 +45,13 @@ Stores complete OCR-extracted text for audit and search purposes.
 - Index on `telegram_id` for user filtering
 
 ### 3. Ingredients Table
-Stores parsed ingredient data with optional OCR linkage.
+Stores parsed ingredient data with reference to parent recipe (OCR entry).
 
 | Column       | Type          | Constraints                    | Description                          |
 |--------------|---------------|-------------------------------|--------------------------------------|
 | id           | BIGSERIAL     | PRIMARY KEY                   | Ingredient identifier                |
 | user_id      | BIGINT        | NOT NULL REFERENCES users(id) | Owner user ID                        |
-| ocr_entry_id | BIGINT        | REFERENCES ocr_entries(id)    | Source OCR entry (optional)          |
+| ocr_entry_id | BIGINT        | REFERENCES ocr_entries(id)    | Parent recipe/OCR entry ID           |
 | name         | VARCHAR(255)  | NOT NULL                      | Ingredient name                      |
 | quantity     | DECIMAL(10,3) | NULL                          | Parsed quantity value                |
 | unit         | VARCHAR(50)   | NULL                          | Measurement unit                     |
@@ -66,9 +67,9 @@ Stores parsed ingredient data with optional OCR linkage.
 
 ### Entity Relationships
 ```
+Users (1) ──── (N) Recipes/OCR Entries
 Users (1) ──── (N) Ingredients
-Users (1) ──── (N) OCR Entries
-OCR Entries (1) ──── (0..1) Ingredients
+Recipes/OCR Entries (1) ──── (N) Ingredients
 ```
 
 ### Foreign Key Constraints
@@ -115,23 +116,33 @@ ORDER BY rank DESC;
 #### User-Specific Queries
 ```sql
 -- Get all ingredients for a user
-SELECT * FROM ingredients WHERE user_id = $1 ORDER BY created_at DESC;
+SELECT i.* FROM ingredients i WHERE i.user_id = $1 ORDER BY i.created_at DESC;
 
--- Get recent OCR entries for a user
-SELECT * FROM ocr_entries WHERE telegram_id = $1 ORDER BY created_at DESC LIMIT 10;
+-- Get recent recipes for a user
+SELECT r.* FROM ocr_entries r WHERE r.telegram_id = $1 ORDER BY r.created_at DESC LIMIT 10;
+
+-- Get ingredients for a specific recipe
+SELECT i.* FROM ingredients i 
+JOIN ocr_entries r ON i.ocr_entry_id = r.id 
+WHERE r.id = $1 AND r.telegram_id = $2;
 ```
 
 #### Search Operations
 ```sql
--- Full-text search in OCR content
-SELECT e.*, ts_rank(e.content_tsv, q.query) as rank
-FROM ocr_entries e, plainto_tsquery('english', $2) q
-WHERE e.telegram_id = $1 AND e.content_tsv @@ q.query
+-- Full-text search in recipe content
+SELECT r.*, ts_rank(r.content_tsv, q.query) as rank
+FROM ocr_entries r, plainto_tsquery('english', $2) q
+WHERE r.telegram_id = $1 AND r.content_tsv @@ q.query
 ORDER BY rank DESC;
 
+-- Search recipes by name
+SELECT r.* FROM ocr_entries r 
+WHERE r.telegram_id = $1 AND r.recipe_name ILIKE $2;
+
 -- Ingredient search by name
-SELECT i.*
-FROM ingredients i
+SELECT i.*, r.recipe_name 
+FROM ingredients i 
+LEFT JOIN ocr_entries r ON i.ocr_entry_id = r.id
 WHERE i.user_id = $1 AND i.name ILIKE $2;
 ```
 
@@ -145,15 +156,15 @@ INSERT INTO users (telegram_id, language_code) VALUES (123456789, 'fr');
 
 ### OCR Entries Table
 ```sql
-INSERT INTO ocr_entries (telegram_id, content) VALUES (123456789, '2 cups flour\n1 cup sugar\n3 eggs');
--- Result: id=1, telegram_id=123456789, content='2 cups flour\n1 cup sugar\n3 eggs'
+INSERT INTO ocr_entries (telegram_id, content, recipe_name) VALUES (123456789, '2 cups flour\n1 cup sugar\n3 eggs', NULL);
+-- Result: id=1, telegram_id=123456789, content='2 cups flour\n1 cup sugar\n3 eggs', recipe_name=NULL
 ```
 
 ### Ingredients Table
 ```sql
 INSERT INTO ingredients (user_id, ocr_entry_id, name, quantity, unit, raw_text)
 VALUES (1, 1, 'flour', 2.0, 'cups', '2 cups flour');
--- Links to user and OCR entry for full traceability
+-- Links to user and OCR entry/recipe for full traceability
 ```
 
 ## Performance Considerations
@@ -200,8 +211,8 @@ VALUES (1, 1, 'flour', 2.0, 'cups', '2 cups flour');
 ## Future Extensions
 
 ### Potential Enhancements
-- **Recipe Templates**: Store complete recipes
-- **Shopping Lists**: Generated from ingredients
+- **Recipe Management**: Edit recipe names, delete recipes, recipe categories
+- **Shopping Lists**: Generated from recipe ingredients
 - **Nutritional Data**: Integration with nutrition APIs
 - **Meal Planning**: Recipe scheduling and planning
 - **Social Features**: Recipe sharing between users
