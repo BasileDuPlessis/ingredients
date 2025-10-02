@@ -155,6 +155,7 @@ pub async fn download_and_process_image(
                                 ingredients,
                                 language_code: language_code.map(|s| s.to_string()),
                                 message_id: Some(sent_message.id.0 as i32),
+                                extracted_text: extracted_text.clone(),
                             })
                             .await?;
 
@@ -281,6 +282,7 @@ async fn handle_text_message(
             Some(RecipeDialogueState::WaitingForRecipeNameAfterConfirm {
                 ingredients,
                 language_code: dialogue_lang_code,
+                extracted_text,
             }) => {
                 // Use dialogue language code if available, otherwise fall back to message language
                 let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
@@ -294,6 +296,7 @@ async fn handle_text_message(
                     text,
                     ingredients,
                     effective_language_code,
+                    extracted_text,
                 )
                 .await;
             }
@@ -302,6 +305,7 @@ async fn handle_text_message(
                 ingredients,
                 language_code: dialogue_lang_code,
                 message_id: _,
+                extracted_text,
             }) => {
                 // Use dialogue language code if available, otherwise fall back to message language
                 let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
@@ -316,6 +320,7 @@ async fn handle_text_message(
                     recipe_name,
                     ingredients,
                     effective_language_code,
+                    extracted_text,
                 )
                 .await;
             }
@@ -325,6 +330,7 @@ async fn handle_text_message(
                 editing_index,
                 language_code: dialogue_lang_code,
                 message_id,
+                extracted_text,
             }) => {
                 // Use dialogue language code if available, otherwise fall back to message language
                 let effective_language_code = dialogue_lang_code.as_deref().or(language_code);
@@ -340,6 +346,7 @@ async fn handle_text_message(
                     editing_index,
                     effective_language_code,
                     message_id,
+                    extracted_text,
                 )
                 .await;
             }

@@ -19,6 +19,7 @@ pub enum RecipeDialogueState {
         ingredients: Vec<MeasurementMatch>,
         language_code: Option<String>,
         message_id: Option<i32>, // ID of the review message to edit
+        extracted_text: String, // Store the original OCR text
     },
     EditingIngredient {
         recipe_name: String,
@@ -26,10 +27,12 @@ pub enum RecipeDialogueState {
         editing_index: usize,
         language_code: Option<String>,
         message_id: Option<i32>, // ID of the review message to edit after editing
+        extracted_text: String, // Store the original OCR text
     },
     WaitingForRecipeNameAfterConfirm {
         ingredients: Vec<MeasurementMatch>,
         language_code: Option<String>,
+        extracted_text: String, // Store the original OCR text
     },
 }
 

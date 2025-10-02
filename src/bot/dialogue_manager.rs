@@ -29,7 +29,7 @@ pub async fn handle_recipe_name_input(
     dialogue: RecipeDialogue,
     _pool: Arc<PgPool>,
     recipe_name_input: &str,
-    _extracted_text: String,
+    extracted_text: String,
     ingredients: Vec<MeasurementMatch>,
     language_code: Option<&str>,
 ) -> Result<()> {
@@ -58,6 +58,7 @@ pub async fn handle_recipe_name_input(
                     ingredients,
                     language_code: language_code.map(|s| s.to_string()),
                     message_id: Some(sent_message.id.0 as i32),
+                    extracted_text,
                 })
                 .await?;
         }
@@ -91,6 +92,7 @@ pub async fn handle_recipe_name_after_confirm_input(
     recipe_name_input: &str,
     ingredients: Vec<MeasurementMatch>,
     language_code: Option<&str>,
+    extracted_text: String,
 ) -> Result<()> {
     let input = recipe_name_input.trim().to_lowercase();
 
@@ -110,7 +112,7 @@ pub async fn handle_recipe_name_after_confirm_input(
             if let Err(e) = save_ingredients_to_database(
                 &pool,
                 msg.chat.id.0,
-                "", // extracted_text not needed for saving
+                &extracted_text,
                 &ingredients,
                 &validated_name,
                 language_code,
@@ -171,6 +173,7 @@ pub async fn handle_ingredient_edit_input(
     editing_index: usize,
     language_code: Option<&str>,
     message_id: Option<i32>,
+    extracted_text: String,
 ) -> Result<()> {
     let input = edit_input.trim().to_lowercase();
 
@@ -208,6 +211,7 @@ pub async fn handle_ingredient_edit_input(
                 ingredients,
                 language_code: language_code.map(|s| s.to_string()),
                 message_id,
+                extracted_text,
             })
             .await?;
 
@@ -253,6 +257,7 @@ pub async fn handle_ingredient_edit_input(
                         ingredients,
                         language_code: language_code.map(|s| s.to_string()),
                         message_id,
+                        extracted_text,
                     })
                     .await?;
             } else {
@@ -265,6 +270,7 @@ pub async fn handle_ingredient_edit_input(
                         ingredients,
                         language_code: language_code.map(|s| s.to_string()),
                         message_id,
+                        extracted_text,
                     })
                     .await?;
             }
@@ -452,6 +458,7 @@ pub async fn handle_ingredient_review_input(
     recipe_name: String,
     ingredients: Vec<MeasurementMatch>,
     language_code: Option<&str>,
+    extracted_text: String,
 ) -> Result<()> {
     let input = review_input.trim().to_lowercase();
 
@@ -461,7 +468,7 @@ pub async fn handle_ingredient_review_input(
             if let Err(e) = save_ingredients_to_database(
                 &_pool,
                 msg.chat.id.0,
-                "", // extracted_text not needed for saving
+                &extracted_text,
                 &ingredients,
                 &recipe_name,
                 language_code,

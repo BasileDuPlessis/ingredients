@@ -93,6 +93,7 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
         ingredients: ingredients.clone(),
         language_code: Some("en".to_string()),
         message_id: Some(123),
+        extracted_text: "Test OCR text".to_string(),
     };
 
     // Verify state structure
@@ -102,6 +103,7 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
             ingredients: ingr,
             language_code,
             message_id,
+            extracted_text,
         } => {
             assert_eq!(recipe_name, "Test Recipe");
             assert_eq!(ingr.len(), 2);
@@ -109,6 +111,7 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
             assert_eq!(ingr[1].ingredient_name, "eggs");
             assert_eq!(language_code, Some("en".to_string()));
             assert_eq!(message_id, Some(123));
+            assert_eq!(extracted_text, "Test OCR text");
         }
         _ => panic!("Expected ReviewIngredients state"),
     }
@@ -120,6 +123,7 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
         editing_index: 0,
         language_code: Some("en".to_string()),
         message_id: Some(123),
+        extracted_text: "Test OCR text".to_string(),
     };
 
     match editing_state {
@@ -129,12 +133,14 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
             editing_index,
             language_code,
             message_id,
+            extracted_text,
         } => {
             assert_eq!(recipe_name, "Test Recipe");
             assert_eq!(ingr.len(), 2);
             assert_eq!(editing_index, 0);
             assert_eq!(language_code, Some("en".to_string()));
             assert_eq!(message_id, Some(123));
+            assert_eq!(extracted_text, "Test OCR text");
         }
         _ => panic!("Expected EditingIngredient state"),
     }
@@ -143,15 +149,18 @@ async fn test_ingredient_review_dialogue_states() -> Result<()> {
     let confirm_state = RecipeDialogueState::WaitingForRecipeNameAfterConfirm {
         ingredients: ingredients.clone(),
         language_code: Some("en".to_string()),
+        extracted_text: "Test OCR text".to_string(),
     };
 
     match confirm_state {
         RecipeDialogueState::WaitingForRecipeNameAfterConfirm {
             ingredients: ingr,
             language_code,
+            extracted_text,
         } => {
             assert_eq!(ingr.len(), 2);
             assert_eq!(language_code, Some("en".to_string()));
+            assert_eq!(extracted_text, "Test OCR text");
         }
         _ => panic!("Expected WaitingForRecipeNameAfterConfirm state"),
     }

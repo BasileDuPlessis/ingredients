@@ -34,6 +34,7 @@ pub async fn callback_handler(
             mut ingredients,
             language_code: dialogue_lang_code,
             message_id,
+            extracted_text,
         }) => {
             let data = q.data.as_deref().unwrap_or("");
             if let Some(msg) = &q.message {
@@ -61,6 +62,7 @@ pub async fn callback_handler(
                                 editing_index: index,
                                 language_code: dialogue_lang_code.clone(),
                                 message_id,
+                                extracted_text: extracted_text.clone(),
                             })
                             .await?;
                     }
@@ -136,6 +138,7 @@ pub async fn callback_handler(
                                 ingredients: ingredients.clone(),
                                 language_code: dialogue_lang_code.clone(),
                                 message_id,
+                                extracted_text: extracted_text.clone(),
                             })
                             .await {
                             Ok(_) => (),
@@ -160,6 +163,7 @@ pub async fn callback_handler(
                         .update(RecipeDialogueState::WaitingForRecipeNameAfterConfirm {
                             ingredients,
                             language_code: dialogue_lang_code,
+                            extracted_text,
                         })
                         .await?;
                 } else if data == "add_more" {
